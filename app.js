@@ -86,9 +86,12 @@ const ZONES = [
     ["buy_scrub_brush","Buy a long-handled tub/shower scrub brush","light","onetime"],
     ["remove_bookcase","Remove the front hallway bookcase","moderate","onetime"],
     ["replace_shoe_rack","Replace the front hallway shoe rack","moderate","onetime"],
-    ["andry_list","Andry: submit shared-space current vs. ideal list","light","onetime"],
     ["moxxie_list","Moxxie: submit shared-space current vs. ideal list","light","onetime"],
     ["lynx_bedroom_list","Lynx: write up bedroom task list","light","onetime"],
+    ["buy_dish_scrubbers","Buy long-handled dish scrubbers","light","onetime"],
+    ["buy_powerwash","Buy Dawn Powerwash (cleans without needing hot water)","light","onetime"],
+    ["buy_dish_stool","Buy an adjustable rolling stool with footrest (to reach the sink)","light","onetime"],
+    ["buy_steam_cleaner","Look into a steam cleaner (heat-sanitizes, no harsh chemicals)","light","onetime"],
   ]},
 ];
 
@@ -443,20 +446,21 @@ const ROOM_TASKS = {
   },
   andry_moxxie: {
     daily: [
-      ["make_bed", "Make the bed", "light"],
+      ["make_bed", "Air out the bed \u2014 blankets pulled back, not made", "light"],
       ["clear_surfaces", "Clear nightstand & dresser \u2014 stray items back where they belong", "light"],
       ["hamper", "Dirty clothes into the hamper, not the floor", "light"],
+      ["clean_laundry_away", "Put clean laundry (clothes & towels) away in its spot \u2014 not on the bed or the hanging chair", "light"],
       ["floor_scan", "Quick floor scan \u2014 pick up anything left out", "light"],
     ],
     weekly: [
       ["laundry", "Wash, dry & put away the shared towels", "light"],
       ["dust", "Dust surfaces: dresser, nightstand, shelves", "light"],
-      ["mirror", "Wipe down the mirror & any glass surfaces", "light"],
       ["closet", "Straighten the closet \u2014 hang up anything stray", "moderate"],
-      ["bedding", "Wash all bedding \u2014 sheets, pillowcases, blanket", "moderate"],
+      ["bedding", "Change the sheets & top blanket", "moderate"],
       ["remake_squish", "Remake the squishmallow pile", "light"],
     ],
     monthly: [
+      ["bedding_full", "Full bedding wash \u2014 sheets, blanket & the topper", "moderate"],
       ["under_bed", "Clean out under the bed", "moderate"],
       ["declutter", "Declutter one drawer, shelf, or surface \u2014 rotate which one each month", "moderate"],
       ["mattress", "Vacuum the mattress", "moderate"],
