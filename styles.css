@@ -401,3 +401,11 @@
   .witch-orb, [class^="witch-"], [class*=" witch-"]{ animation: none !important; }
   *, *::before, *::after{ animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; }
 }
+
+/* Perf default: static starfield + title glow. The twinkle/flicker animations
+   forced the compositor to re-sample the large blurred orbs every frame, which
+   lagged lower-end machines and kept fans spinning. Everything stays fully
+   visible — it just no longer pulses. (The reduced-motion block above is now a
+   superset of this; this makes it the default for everyone.) */
+.stage-stars, .stage-stars-edge, .stage-stars-tile-a, .stage-stars-tile-b { animation: none !important; }
+h1 { animation: none !important; }
