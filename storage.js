@@ -12,6 +12,12 @@
   const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
   window.sb = sb;
 
+  // Last value THIS device wrote for each key. Used to ignore the realtime
+  // "echo" of our own changes — without this, every click triggers a full
+  // reload (desktop lag) and can race the write on mobile, reverting the
+  // assignment you just made.
+  const localWrites = new Map();
+
   // ---- storage shim -------------------------------------------------------
   window.storage = {
     async get(key, shared) {
@@ -24,11 +30,15 @@
       if (error) { console.error("storage.get failed:", key, error.message); return null; }
       return data ? { value: data.value } : null;
     },
+    // Fire-and-forget: resolves immediately so the UI updates without waiting
+    // on the network round-trip. The write still goes out; errors are logged.
+    // Last-write-wins, exactly as the prototype behaved.
     async set(key, value, shared) {
       if (!shared) { localStorage.setItem(key, value); return; }
-      const { error } = await sb.from("kv")
-        .upsert({ key, value, updated_at: new Date().toISOString() });
-      if (error) console.error("storage.set failed:", key, error.message);
+      localWrites.set(key, value);
+      sb.from("kv")
+        .upsert({ key, value, updated_at: new Date().toISOString() })
+        .then(({ error }) => { if (error) console.error("storage.set failed:", key, error.message); });
     }
   };
 
@@ -62,21 +72,32 @@
   });
 
   // ---- realtime sync ------------------------------------------------------
-  // When anyone changes a shared key, reload the three state groups and re-render.
-  // Data is a few KB, so reloading all of it on any change is simple and safe.
-  let syncTimer;
+  // Reload only the state group that actually changed, and only when the
+  // change came from ANOTHER device (our own writes are already reflected
+  // in memory, so their echoes are ignored).
+  const pending = new Set();
+  let timer;
   function subscribeRealtime() {
     sb.channel("kv-sync")
       .on("postgres_changes",
           { event: "*", schema: "public", table: "kv" },
-          () => { clearTimeout(syncTimer); syncTimer = setTimeout(reloadEverything, 300); })
+          (payload) => {
+            const isEcho = payload.new && localWrites.get(payload.new.key) === payload.new.value;
+            if (isEcho) return;                       // our own change — skip
+            const row = (payload.new && payload.new.key) ? payload.new : payload.old;
+            if (!row || !row.key) return;
+            pending.add(row.key);
+            clearTimeout(timer);
+            timer = setTimeout(flushReload, 200);
+          })
       .subscribe();
   }
-  async function reloadEverything() {
+  async function flushReload() {
+    const keys = [...pending]; pending.clear();
     try {
-      await loadState();        renderAll();
-      await bedLoadState();     bedRenderAll();
-      await laundryLoadState(); laundryRenderAll();
+      if (keys.includes(STORAGE_KEY))               { await loadState();        renderAll(); }
+      if (keys.some(k => k.startsWith("bedroom-")))  { await bedLoadState();     bedRenderAll(); }
+      if (keys.includes(LAUNDRY_STORAGE_KEY))       { await laundryLoadState(); laundryRenderAll(); }
     } catch (e) { console.error("realtime reload failed:", e); }
   }
 
