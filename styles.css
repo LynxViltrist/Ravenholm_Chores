@@ -411,3 +411,12 @@
    superset of this; this makes it the default for everyone.) */
 .stage-stars, .stage-stars-edge, .stage-stars-tile-a, .stage-stars-tile-b { animation: none !important; }
 h1 { animation: none !important; }
+
+/* Firefox desktop scroll perf: pin the decorative background to the viewport so
+   it is painted ONCE and never repainted while content scrolls over it. This was
+   the remaining scroll-drag cause (Firefox repaints large gradient/shadow layers
+   on scroll; Blink/WebKit on phones does not, which is why mobile was smooth).
+   Tradeoff: the forest no longer scrolls by as a tall column — it's a fixed
+   backdrop. Remove this block to restore the scrolling-column look. */
+.stage-forest-wrap, .stage-shade, .stage-stars, .stage-stars-edge,
+.stage-stars-tile-a, .stage-stars-tile-b, .witch-orb { position: fixed; }
