@@ -412,8 +412,13 @@ h1 { animation: none !important; }
    on scroll; Blink/WebKit on phones does not, which is why mobile was smooth).
    Tradeoff: the forest no longer scrolls by as a tall column — it's a fixed
    backdrop. Remove this block to restore the scrolling-column look. */
-.stage-forest-wrap, .stage-shade, .stage-stars, .stage-stars-edge,
-.stage-stars-tile-a, .stage-stars-tile-b, .witch-orb { position: fixed; }
+/* Desktop only: pin the backdrop so Firefox doesn't repaint it on scroll.
+   On mobile we keep the default (absolute) background — a fixed backdrop drifts
+   as the phone's address bar hides/shows while scrolling. */
+@media (min-width: 900px){
+  .stage-forest-wrap, .stage-shade, .stage-stars, .stage-stars-edge,
+  .stage-stars-tile-a, .stage-stars-tile-b, .witch-orb { position: fixed; }
+}
 
 /* The "white bar on fast scroll" is Firefox showing not-yet-painted area (APZ
    checkerboarding). Paint it dark so any such flash blends with the theme. */
