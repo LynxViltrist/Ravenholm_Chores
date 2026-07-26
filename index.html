@@ -36,6 +36,7 @@
     <button type="button" class="tab-btn" data-tab="closet-moxxie" role="tab" aria-selected="false">Moxxie Closet</button>
     <button type="button" class="tab-btn" data-tab="laundry" role="tab" aria-selected="false">Laundry</button>
     <button type="button" class="tab-btn" data-tab="my-chores" role="tab" aria-selected="false">My Chores</button>
+    <button type="button" class="tab-btn" data-tab="shopping" role="tab" aria-selected="false">Shopping</button>
   </div>
 
   <div class="tab-panel" data-tabpanel="household">
@@ -73,6 +74,16 @@
   <div class="filter-row" id="filter-row"></div>
 
   <div id="zones"></div>
+
+  <section class="panel" id="pending-panel">
+    <h2>One-time / Pending</h2>
+    <p class="panel-sub">Projects and to-dos that aren't on a schedule. Check them off when done — add or remove anything as needed.</p>
+    <ul class="edit-list" id="pending-list"></ul>
+    <div class="add-row">
+      <input id="pending-add-input" type="text" class="add-input" placeholder="Add a one-time task…" maxlength="120">
+      <button id="pending-add-btn" type="button" class="add-btn">Add</button>
+    </div>
+  </section>
 
   <footer class="actions">
     <p class="note">Daily tasks reset most often — clear those each morning. "Reset everything" also clears every-other-day, weekly, and monthly tasks for a fresh cycle. As-needed and one-time / pending items aren't touched by either reset — check them off and uncheck when they need doing again.</p>
@@ -210,6 +221,22 @@
   <p class="lede" style="margin: 0 0 18px;">Everything currently assigned to whoever you've set as "I am" on the Household Board tab — pulled live from the board, the bedrooms, and laundry.</p>
 
   <div id="mychores-content"></div>
+
+  </div>
+
+  <div class="tab-panel" data-tabpanel="shopping" hidden>
+
+  <p class="lede" style="margin: 0 0 18px;">Everything we need to buy to keep up with the cleaning tasks — check off what we already have, and add or remove anything.</p>
+
+  <section class="panel">
+    <div class="panel-head"><h2>Shopping List</h2></div>
+    <p class="panel-sub">Built from all the cleaning tasks. Check off what's stocked; add or remove freely.</p>
+    <ul class="edit-list" id="shopping-list"></ul>
+    <div class="add-row">
+      <input id="shopping-add-input" type="text" class="add-input" placeholder="Add an item…" maxlength="120">
+      <button id="shopping-add-btn" type="button" class="add-btn">Add</button>
+    </div>
+  </section>
 
   </div>
 

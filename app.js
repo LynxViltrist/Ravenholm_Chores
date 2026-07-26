@@ -8,7 +8,46 @@ const FREQ = {
   as_needed: "As needed",
   onetime: "One-time / pending"
 };
-const FREQ_ORDER = ["daily","eod","weekly","monthly","as_needed","onetime"];
+const FREQ_ORDER = ["daily","eod","weekly","monthly"];
+
+// --- Editable lists, synced in shared state: Shopping supplies + One-time/Pending todos ---
+function uid(){ return "x" + Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
+function defaultPending(){ return [
+  { id:"remove_bookcase", label:"Remove the front hallway bookcase", done:false },
+  { id:"replace_shoe_rack", label:"Replace the front hallway shoe rack", done:false },
+  { id:"moxxie_list", label:"Moxxie: submit shared-space current vs. ideal list", done:false },
+  { id:"lynx_bedroom_list", label:"Lynx: write up bedroom task list", done:false },
+]; }
+function defaultShopping(){ return [
+  { id:"sh_dishsoap", label:"Dish soap / Dawn Powerwash (cleans without hot water)", done:false },
+  { id:"sh_scrubbers", label:"Long-handled dish scrubbers", done:false },
+  { id:"sh_stool", label:"Adjustable rolling stool with footrest (to reach the sink)", done:false },
+  { id:"sh_dwdet", label:"Dishwasher detergent / pods", done:false },
+  { id:"sh_sponges", label:"Sponges", done:false },
+  { id:"sh_apc", label:"All-purpose surface cleaner", done:false },
+  { id:"sh_wipes", label:"Disinfecting wipes", done:false },
+  { id:"sh_microfiber", label:"Microfiber cloths", done:false },
+  { id:"sh_papertowels", label:"Paper towels", done:false },
+  { id:"sh_duster", label:"Extendable duster", done:false },
+  { id:"sh_glass", label:"Glass cleaner (windows & mirrors)", done:false },
+  { id:"sh_toiletcleaner", label:"Toilet bowl cleaner", done:false },
+  { id:"sh_toiletbrush", label:"Toilet brush", done:false },
+  { id:"sh_tubbrush", label:"Long-handled tub/shower scrub brush", done:false },
+  { id:"sh_tubcleaner", label:"Tub & shower cleaner", done:false },
+  { id:"sh_bathcleaner", label:"Bathroom sink/counter cleaner", done:false },
+  { id:"sh_mop", label:"Mop + replacement pads (kitchen floor)", done:false },
+  { id:"sh_broom", label:"Broom & dustpan (hallway sweeping)", done:false },
+  { id:"sh_floorcleaner", label:"Floor cleaner (kitchen mopping)", done:false },
+  { id:"sh_trashbags", label:"Trash bags / can liners", done:false },
+  { id:"sh_litter", label:"Cat litter", done:false },
+  { id:"sh_scoop", label:"Litter scoop", done:false },
+  { id:"sh_wastebags", label:"Litter waste bags", done:false },
+  { id:"sh_gloves", label:"Disposable gloves (for the cat boxes)", done:false },
+  { id:"sh_n95", label:"N95 masks (for the cat boxes)", done:false },
+  { id:"sh_detergent", label:"Laundry detergent", done:false },
+  { id:"sh_dryer", label:"Dryer sheets / wool dryer balls", done:false },
+  { id:"sh_steam", label:"Steam cleaner — heat-sanitizes, no harsh chemicals (to look into)", done:false },
+]; }
 
 // [id, label, tier, frequency]
 const ZONES = [
@@ -82,18 +121,8 @@ const ZONES = [
   { id:"general", name:"General (whole house)", tasks:[
     ["general_wipe","General wipe-down/dusting — switches, handles, baseboards, shelves","light","monthly"],
   ]},
-  { id:"pending", name:"One-time / Pending", tasks:[
-    ["buy_scrub_brush","Buy a long-handled tub/shower scrub brush","light","onetime"],
-    ["remove_bookcase","Remove the front hallway bookcase","moderate","onetime"],
-    ["replace_shoe_rack","Replace the front hallway shoe rack","moderate","onetime"],
-    ["moxxie_list","Moxxie: submit shared-space current vs. ideal list","light","onetime"],
-    ["lynx_bedroom_list","Lynx: write up bedroom task list","light","onetime"],
-    ["buy_dish_scrubbers","Buy long-handled dish scrubbers","light","onetime"],
-    ["buy_powerwash","Buy Dawn Powerwash (cleans without needing hot water)","light","onetime"],
-    ["buy_dish_stool","Buy an adjustable rolling stool with footrest (to reach the sink)","light","onetime"],
-    ["buy_steam_cleaner","Look into a steam cleaner (heat-sanitizes, no harsh chemicals)","light","onetime"],
-  ]},
 ];
+// (One-time/Pending and Shopping are now editable, synced lists — see defaultPending()/defaultShopping().)
 
 const DAYS = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
 const PALETTE = [
@@ -107,7 +136,7 @@ const PALETTE = [
   {bg:"#832E3E", fg:"#FBDCE0"},
 ];
 
-let state = { roster: [], tasks: {} };
+let state = { roster: [], tasks: {}, pending: [], shopping: [] };
 let myName = "";
 let activeFilter = "all";
 
@@ -149,8 +178,16 @@ async function loadState(){
       const parsed = JSON.parse(res.value);
       state.roster = parsed.roster || [];
       state.tasks = parsed.tasks || {};
+      state.pending = Array.isArray(parsed.pending) ? parsed.pending : defaultPending();
+      state.shopping = Array.isArray(parsed.shopping) ? parsed.shopping : defaultShopping();
+    } else {
+      state.pending = defaultPending();
+      state.shopping = defaultShopping();
     }
-  } catch(e){}
+  } catch(e){
+    if (!state.pending || !state.pending.length) state.pending = defaultPending();
+    if (!state.shopping || !state.shopping.length) state.shopping = defaultShopping();
+  }
   try{
     const me = await window.storage.get("my-name", false);
     if (me && me.value) myName = me.value;
@@ -373,7 +410,62 @@ function renderZones(){
   });
 }
 
-function renderAll(){ renderMeSelect(); renderRoster(); renderFilters(); renderZones(); renderMyChores(); }
+function renderAll(){ renderMeSelect(); renderRoster(); renderFilters(); renderZones(); renderPending(); renderShopping(); renderMyChores(); }
+
+// --- Editable lists: One-time/Pending (household board) + Shopping (own tab) ---
+function editListFor(kind){ return kind === "shopping" ? state.shopping : state.pending; }
+function renderEditList(containerId, kind){
+  const el = document.getElementById(containerId);
+  if (!el) return;
+  const items = editListFor(kind) || [];
+  if (!items.length){
+    el.innerHTML = `<li class="edit-empty">Nothing here yet — add something below.</li>`;
+    return;
+  }
+  el.innerHTML = items.map(it => `
+    <li class="edit-item${it.done ? ' done' : ''}">
+      <input type="checkbox" class="edit-check" data-kind="${kind}" data-id="${escapeHtml(it.id)}" ${it.done ? 'checked' : ''} aria-label="Mark done">
+      <span class="edit-label">${escapeHtml(it.label)}</span>
+      <button type="button" class="edit-remove" data-kind="${kind}" data-id="${escapeHtml(it.id)}" title="Remove" aria-label="Remove ${escapeHtml(it.label)}">✕</button>
+    </li>`).join("");
+}
+function renderPending(){ renderEditList("pending-list", "pending"); }
+function renderShopping(){ renderEditList("shopping-list", "shopping"); }
+
+async function addEditItem(kind, label){
+  label = (label || "").trim();
+  if (!label) return;
+  editListFor(kind).push({ id: uid(), label, done: false });
+  await saveState(); renderAll();
+}
+async function toggleEditItem(kind, id, done){
+  const it = editListFor(kind).find(x => x.id === id);
+  if (it) it.done = done;
+  await saveState(); renderAll();
+}
+async function removeEditItem(kind, id){
+  const arr = editListFor(kind);
+  const i = arr.findIndex(x => x.id === id);
+  if (i >= 0) arr.splice(i, 1);
+  await saveState(); renderAll();
+}
+
+document.addEventListener("change", (e) => {
+  const cb = e.target.closest(".edit-check");
+  if (cb) toggleEditItem(cb.getAttribute("data-kind"), cb.getAttribute("data-id"), cb.checked);
+});
+document.addEventListener("click", (e) => {
+  const rm = e.target.closest(".edit-remove");
+  if (rm) removeEditItem(rm.getAttribute("data-kind"), rm.getAttribute("data-id"));
+});
+["pending","shopping"].forEach(kind => {
+  const btn = document.getElementById(kind + "-add-btn");
+  const input = document.getElementById(kind + "-add-input");
+  if (btn && input){
+    btn.addEventListener("click", () => { addEditItem(kind, input.value); input.value = ""; input.focus(); });
+    input.addEventListener("keydown", (e) => { if (e.key === "Enter"){ e.preventDefault(); btn.click(); } });
+  }
+});
 
 document.getElementById("add-name-btn").addEventListener("click", async () => {
   const input = document.getElementById("new-name");
