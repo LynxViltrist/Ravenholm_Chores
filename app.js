@@ -1,0 +1,814 @@
+const STORAGE_KEY = "chore-board-v2";
+const TIER = { light: {label:"Light"}, moderate: {label:"Moderate"}, heavy: {label:"Heavy"} };
+const FREQ = {
+  daily: "Daily",
+  eod: "Every other day",
+  weekly: "Weekly",
+  monthly: "Monthly",
+  as_needed: "As needed",
+  onetime: "One-time / pending"
+};
+const FREQ_ORDER = ["daily","eod","weekly","monthly","as_needed","onetime"];
+
+// [id, label, tier, frequency]
+const ZONES = [
+  { id:"trash", name:"Trash", tasks:[
+    ["empty_reline","Empty & reline all cans; sweep a trash check through every room","light","daily"],
+    ["stage_bags","Stage bags by the front door","light","daily"],
+    ["haul_dumpster","Load the Kia & haul to the dumpster","moderate","daily"],
+  ]},
+  { id:"dining", name:"Dining Room", tasks:[
+    ["clear_main_table","Clear & wipe the main dining table, chairs pushed in","light","daily"],
+    ["vacuum_chair_cushions","Vacuum the dining chair cushions","light","monthly"],
+  ]},
+  { id:"kitchen_dishes", name:"Kitchen — Dishes", tasks:[
+    ["load_dw","Load & run the dishwasher","light","daily"],
+    ["hand_wash","Hand-wash pots, knives, chopsticks, oversized items","moderate","daily"],
+    ["dry_away","Dry & put dishes away","light","daily"],
+    ["clean_cups","Clean the cups in use","light","daily"],
+  ]},
+  { id:"kitchen_surfaces", name:"Kitchen — Surfaces & Appliances", tasks:[
+    ["counters","Clear & wipe counters","light","daily"],
+    ["stove","Wipe down the stove","light","daily"],
+    ["microwave","Clean the microwave","light","weekly"],
+    ["fridge_toss","Toss expired fridge food & wipe spills","moderate","weekly"],
+  ]},
+  { id:"floors", name:"Floors (whole house)", tasks:[
+    ["floors_clear","Keep floors clear so the robot vacuum can run","light","daily"],
+    ["whole_house_vacuum","Whole-house vacuum/sweep + mop kitchen floor","moderate","weekly"],
+    ["couch_vacuum","Vacuum the couch","moderate","weekly"],
+    ["cat_tree_vacuum","Vacuum the cat trees","light","monthly"],
+  ]},
+  { id:"living", name:"Living Room", tasks:[
+    ["dust_cords","Dust surfaces & tidy cords","light","monthly"],
+  ]},
+  { id:"hallway", name:"Front Hallway", tasks:[
+    ["shoes_away","Shoes & stray items put away","light","daily"],
+    ["robot_vacuum_clear","Clear the robot vacuum's path / empty its bin","light","eod"],
+    ["sweep_hallway","Sweep the hallway","light","weekly"],
+  ]},
+  { id:"office", name:"Office", tasks:[
+    ["sort_mail","Sort the mail — keep / recycle / needs action","light","daily"],
+  ]},
+  { id:"bath1", name:"Bathroom 1", tasks:[
+    ["b1_daily_light","Clear surfaces, quick wipe sink, towels to laundry","light","daily"],
+    ["b1_toilet","Scrub the toilet","moderate","weekly"],
+    ["b1_tub","Scrub the tub/shower","heavy","weekly"],
+    ["b1_sink_full","Clean sink/counter/mirror, sweep & mop, restock","moderate","weekly"],
+  ]},
+  { id:"bath2", name:"Bathroom 2", tasks:[
+    ["b2_daily_light","Clear surfaces, quick wipe sink, towels to laundry","light","daily"],
+    ["b2_toilet","Scrub the toilet","moderate","weekly"],
+    ["b2_tub","Scrub the tub/shower","heavy","weekly"],
+    ["b2_sink_full","Clean sink/counter/mirror, sweep & mop, restock","moderate","weekly"],
+  ]},
+  { id:"catbox_office", name:"Cat Box — Office", tasks:[
+    ["office_scoop","Scoop the box","heavy","daily"],
+    ["office_catbox_vacuum","Vacuum around the box","light","daily"],
+    ["office_catbox_service","Full box service (dump/wash/refill)","heavy","weekly"],
+  ]},
+  { id:"catbox_andry", name:"Cat Box — Andry's Bedroom", tasks:[
+    ["andry_scoop","Scoop the box","moderate","daily"],
+    ["andry_catbox_vacuum","Vacuum around the box","moderate","daily"],
+    ["andry_catbox_service","Full box service (dump/wash/refill)","heavy","weekly"],
+  ]},
+  { id:"catbox_lynx", name:"Cat Box — Lynx's Bedroom", tasks:[
+    ["lynx_scoop","Scoop the box","light","daily"],
+    ["lynx_catbox_service","Full box service (dump/wash/refill)","heavy","weekly"],
+  ]},
+  { id:"car", name:"Car (Kia)", tasks:[
+    ["car_cleanout","Full cleanout","moderate","weekly"],
+  ]},
+  { id:"general", name:"General (whole house)", tasks:[
+    ["general_wipe","General wipe-down/dusting — switches, handles, baseboards, shelves","light","monthly"],
+  ]},
+  { id:"pending", name:"One-time / Pending", tasks:[
+    ["buy_scrub_brush","Buy a long-handled tub/shower scrub brush","light","onetime"],
+    ["remove_bookcase","Remove the front hallway bookcase","moderate","onetime"],
+    ["replace_shoe_rack","Replace the front hallway shoe rack","moderate","onetime"],
+    ["andry_list","Andry: submit shared-space current vs. ideal list","light","onetime"],
+    ["moxxie_list","Moxxie: submit shared-space current vs. ideal list","light","onetime"],
+    ["lynx_bedroom_list","Lynx: write up bedroom task list","light","onetime"],
+  ]},
+];
+
+const DAYS = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+const PALETTE = [
+  {bg:"#4B2E83", fg:"#EAE0FB"},
+  {bg:"#2E6B52", fg:"#D6F5E6"},
+  {bg:"#832E52", fg:"#FBE0EC"},
+  {bg:"#2E4E83", fg:"#DCE7FB"},
+  {bg:"#83672E", fg:"#FBECD0"},
+  {bg:"#6B2E83", fg:"#F0E0FB"},
+  {bg:"#2E837A", fg:"#D2FBF4"},
+  {bg:"#832E3E", fg:"#FBDCE0"},
+];
+
+let state = { roster: [], tasks: {} };
+let myName = "";
+let activeFilter = "all";
+
+function allTaskIds(){ const ids=[]; ZONES.forEach(z=>z.tasks.forEach(t=>ids.push(t[0]))); return ids; }
+function taskMeta(id){ for(const z of ZONES) for(const t of z.tasks) if(t[0]===id) return {zone:z,id:t[0],label:t[1],tier:t[2],freq:t[3]}; return null; }
+function todayName(){ return DAYS[new Date().getDay()]; }
+function colorFor(name){
+  const idx = state.roster.indexOf(name);
+  if (idx < 0) return null;
+  return PALETTE[idx % PALETTE.length];
+}
+function initialsOf(name){
+  const parts = name.trim().split(/\s+/);
+  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
+  return parts[0].slice(0,2).toUpperCase();
+}
+function dayCellsHtml(id, label, t){
+  return DAYS.map(d => {
+    const name = t.schedule ? t.schedule[d] : null;
+    const isToday = d === todayName();
+    const color = name ? colorFor(name) : null;
+    const style = color ? ` style="background:${color.bg}; color:${color.fg}; border-color:${color.bg};"` : "";
+    const isMine = myName && name === myName;
+    const disabledAttr = myName ? "" : " disabled";
+    let title;
+    if (!myName) title = "Select who you are above first";
+    else if (isMine) title = `${d}: assigned to ${myName} — click to unassign`;
+    else if (name) title = `${d}: ${name} — click to take this day for ${myName}`;
+    else title = `${d}: unassigned — click to take this day for ${myName}`;
+    const display = name ? initialsOf(name) : d[0];
+    return `<button type="button" class="day-bubble${isToday?' today':''}${name?' assigned':''}${isMine?' mine':''}"${disabledAttr} data-task="${id}" data-day="${d}"${style} title="${escapeHtml(title)}" aria-label="${escapeHtml(title)}">${escapeHtml(display)}</button>`;
+  }).join("");
+}
+
+async function loadState(){
+  try{
+    const res = await window.storage.get(STORAGE_KEY, true);
+    if (res && res.value){
+      const parsed = JSON.parse(res.value);
+      state.roster = parsed.roster || [];
+      state.tasks = parsed.tasks || {};
+    }
+  } catch(e){}
+  try{
+    const me = await window.storage.get("my-name", false);
+    if (me && me.value) myName = me.value;
+  } catch(e){}
+}
+async function saveState(){
+  try{ await window.storage.set(STORAGE_KEY, JSON.stringify(state), true); } catch(e){ console.error("Save failed", e); }
+}
+async function saveMyName(){
+  try{ await window.storage.set("my-name", myName, false); } catch(e){ console.error(e); }
+}
+function ensureTask(id){
+  if(!state.tasks[id]) state.tasks[id] = { claimedBy:null, done:false };
+  const t = state.tasks[id];
+  const meta = taskMeta(id);
+  if (meta && meta.freq === "daily" && !t.schedule){
+    t.schedule = {};
+    DAYS.forEach(d => { t.schedule[d] = null; });
+  }
+  return t;
+}
+function escapeHtml(s){ return s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+function renderMeSelect(){
+  const sel = document.getElementById("me-select");
+  sel.innerHTML = "";
+  const noneOpt = document.createElement("option");
+  noneOpt.value = ""; noneOpt.textContent = "— select —";
+  sel.appendChild(noneOpt);
+  state.roster.forEach(name => {
+    const opt = document.createElement("option");
+    opt.value = name; opt.textContent = name;
+    if (name === myName) opt.selected = true;
+    sel.appendChild(opt);
+  });
+  sel.onchange = async () => { myName = sel.value; await saveMyName(); renderAll(); };
+}
+
+function renderRoster(){
+  const grid = document.getElementById("roster-grid");
+  grid.innerHTML = "";
+  if (state.roster.length === 0){
+    grid.innerHTML = '<p class="empty-roster">Add everyone in the house above to start claiming tasks.</p>';
+    return;
+  }
+  state.roster.forEach(name => {
+    const counts = { light:0, moderate:0, heavy:0 };
+    let total = 0;
+    Object.entries(state.tasks).forEach(([id, t]) => {
+      const meta = taskMeta(id);
+      if (!meta || meta.freq === "onetime") return;
+      if (meta.freq === "daily"){
+        if (t.schedule){
+          DAYS.forEach(d => { if (t.schedule[d] === name){ counts[meta.tier]++; total++; } });
+        }
+      } else if (t.claimedBy === name){
+        counts[meta.tier]++; total++;
+      }
+    });
+    const points = counts.light*1 + counts.moderate*2 + counts.heavy*3;
+    const card = document.createElement("div");
+    card.className = "roster-card";
+    const lightW = points>0 ? (counts.light*1/points)*100 : 0;
+    const modW = points>0 ? (counts.moderate*2/points)*100 : 0;
+    const heavyW = points>0 ? (counts.heavy*3/points)*100 : 0;
+    card.innerHTML = `
+      <div class="roster-name">
+        <span>${escapeHtml(name)}</span>
+        <button class="ghost small" data-remove="${escapeHtml(name)}" aria-label="Remove ${escapeHtml(name)} from roster">Remove</button>
+      </div>
+      <div class="load-bar">
+        ${points>0 ? `
+          <div class="load-seg light" style="width:${lightW}%"></div>
+          <div class="load-seg moderate" style="width:${modW}%"></div>
+          <div class="load-seg heavy" style="width:${heavyW}%"></div>
+        ` : ""}
+      </div>
+      <div class="roster-count">${total} occurrence${total===1?"":"s"}/wk &middot; L${counts.light} / M${counts.moderate} / H${counts.heavy}</div>
+    `;
+    grid.appendChild(card);
+  });
+  grid.querySelectorAll("[data-remove]").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      const name = btn.getAttribute("data-remove");
+      state.roster = state.roster.filter(n => n !== name);
+      Object.values(state.tasks).forEach(t => {
+        if (t.claimedBy === name) t.claimedBy = null;
+        if (t.schedule){ DAYS.forEach(d => { if (t.schedule[d] === name) t.schedule[d] = null; }); }
+      });
+      if (myName === name){ myName = ""; await saveMyName(); }
+      await saveState();
+      renderAll();
+    });
+  });
+}
+
+function renderFilters(){
+  const row = document.getElementById("filter-row");
+  row.innerHTML = "";
+  const options = [["all","All"], ...FREQ_ORDER.map(f => [f, FREQ[f]])];
+  options.forEach(([key,label]) => {
+    const btn = document.createElement("button");
+    btn.className = "filter-btn" + (activeFilter===key ? " active" : "");
+    btn.textContent = label;
+    btn.addEventListener("click", () => { activeFilter = key; renderZones(); renderFilters(); });
+    row.appendChild(btn);
+  });
+}
+
+function zoneVisibleTasks(zone){ return zone.tasks.filter(t => activeFilter==="all" || t[3]===activeFilter); }
+function zoneProgress(zone, visibleTasks){
+  const total = visibleTasks.length;
+  const done = visibleTasks.filter(t => state.tasks[t[0]] && state.tasks[t[0]].done).length;
+  return `${done}/${total}`;
+}
+
+function renderZones(){
+  const container = document.getElementById("zones");
+  container.innerHTML = "";
+  ZONES.forEach(zone => {
+    const visible = zoneVisibleTasks(zone);
+    if (visible.length === 0) return;
+    const zoneEl = document.createElement("div");
+    zoneEl.className = "zone";
+    const bodyId = `body-${zone.id}`;
+    zoneEl.innerHTML = `
+      <button class="zone-head" data-toggle="${bodyId}" aria-expanded="true" aria-controls="${bodyId}">
+        <span class="zone-title"><h3>${escapeHtml(zone.name)}</h3></span>
+        <span class="zone-progress">${zoneProgress(zone, visible)} <span class="chevron">▾</span></span>
+      </button>
+      <div class="zone-body" id="${bodyId}"></div>
+    `;
+    const body = zoneEl.querySelector(".zone-body");
+    visible.forEach(([id, label, tier, freq]) => {
+      const t = ensureTask(id);
+      const row = document.createElement("div");
+      row.className = "task-row" + (t.done ? " done" : "");
+      if (freq === "daily"){
+        const todayAssignee = t.schedule ? t.schedule[todayName()] : null;
+        row.innerHTML = `
+          <input type="checkbox" class="task-check" ${t.done?"checked":""} aria-label="Mark '${escapeHtml(label)}' done today" data-task="${id}">
+          <span class="tier-tag ${tier}">${TIER[tier].label}</span>
+          <span class="freq-tag">${FREQ[freq]}</span>
+          <span class="task-main">
+            <span class="task-label">${escapeHtml(label)}</span>
+            <span class="today-badge${todayAssignee ? "" : " unassigned"}">${todayAssignee ? `Today: ${escapeHtml(todayAssignee)}` : "Today: unassigned"}</span>
+          </span>
+          <div class="day-row" role="group" aria-label="Assign days for '${escapeHtml(label)}'">
+            ${dayCellsHtml(id, label, t)}
+          </div>
+        `;
+      } else {
+        const rosterOptions = ["", ...state.roster].map(n =>
+          `<option value="${escapeHtml(n)}" ${t.claimedBy===n?"selected":""}>${n===""?"Unclaimed":escapeHtml(n)}</option>`
+        ).join("");
+        const isMineClaim = myName && t.claimedBy === myName;
+        const quickDisabled = myName ? "" : " disabled";
+        const quickTitle = myName ? `Quick-claim for ${myName}` : "Select who you are above first";
+        row.innerHTML = `
+          <input type="checkbox" class="task-check" ${t.done?"checked":""} aria-label="Mark '${escapeHtml(label)}' done" data-task="${id}">
+          <span class="tier-tag ${tier}">${TIER[tier].label}</span>
+          <span class="freq-tag">${FREQ[freq]}</span>
+          <span class="task-main"><span class="task-label">${escapeHtml(label)}</span></span>
+          <select class="claim-select" aria-label="Who's doing '${escapeHtml(label)}'" data-task="${id}">
+            ${rosterOptions}
+          </select>
+          <button type="button" class="ghost small claim-quick${isMineClaim?' active':''}"${quickDisabled} data-task="${id}" title="${escapeHtml(quickTitle)}">${isMineClaim ? "✓ Mine" : "Mine"}</button>
+        `;
+      }
+      body.appendChild(row);
+    });
+    container.appendChild(zoneEl);
+  });
+
+  container.querySelectorAll("[data-toggle]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const body = document.getElementById(btn.getAttribute("data-toggle"));
+      const isHidden = body.hasAttribute("hidden");
+      if (isHidden) body.removeAttribute("hidden"); else body.setAttribute("hidden","");
+      btn.setAttribute("aria-expanded", isHidden ? "true" : "false");
+      btn.querySelector(".chevron").textContent = isHidden ? "▾" : "▸";
+    });
+  });
+  container.querySelectorAll(".task-check").forEach(cb => {
+    cb.addEventListener("change", async () => {
+      const id = cb.getAttribute("data-task");
+      ensureTask(id).done = cb.checked;
+      await saveState();
+      renderAll();
+    });
+  });
+  container.querySelectorAll(".claim-select").forEach(sel => {
+    sel.addEventListener("change", async () => {
+      const id = sel.getAttribute("data-task");
+      ensureTask(id).claimedBy = sel.value || null;
+      await saveState();
+      renderAll();
+    });
+  });
+  container.querySelectorAll(".day-bubble").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      if (!myName) return;
+      const id = btn.getAttribute("data-task");
+      const day = btn.getAttribute("data-day");
+      const t = ensureTask(id);
+      t.schedule[day] = (t.schedule[day] === myName) ? null : myName;
+      await saveState();
+      renderAll();
+    });
+  });
+  container.querySelectorAll(".claim-quick").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      if (!myName) return;
+      const id = btn.getAttribute("data-task");
+      const t = ensureTask(id);
+      t.claimedBy = (t.claimedBy === myName) ? null : myName;
+      await saveState();
+      renderAll();
+    });
+  });
+}
+
+function renderAll(){ renderMeSelect(); renderRoster(); renderFilters(); renderZones(); renderMyChores(); }
+
+document.getElementById("add-name-btn").addEventListener("click", async () => {
+  const input = document.getElementById("new-name");
+  const name = input.value.trim();
+  if (!name) return;
+  if (!state.roster.includes(name)) state.roster.push(name);
+  input.value = "";
+  myName = name;
+  await saveMyName();
+  await saveState();
+  renderAll();
+});
+document.getElementById("new-name").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") document.getElementById("add-name-btn").click();
+});
+
+document.getElementById("reset-daily-btn").addEventListener("click", async () => {
+  if (!confirm("Clear today's checkmarks for daily tasks? (Day-of-week assignments stay as-is.)")) return;
+  allTaskIds().forEach(id => {
+    const meta = taskMeta(id);
+    if (meta && meta.freq === "daily") ensureTask(id).done = false;
+  });
+  await saveState();
+  renderAll();
+});
+document.getElementById("reset-all-btn").addEventListener("click", async () => {
+  if (!confirm("Clear today's daily checkmarks and reset every every-other-day, weekly, and monthly claim? Daily day-of-week assignments, one-time/pending items, and as-needed items are left as-is.")) return;
+  allTaskIds().forEach(id => {
+    const meta = taskMeta(id);
+    if (!meta || meta.freq === "onetime" || meta.freq === "as_needed") return;
+    if (meta.freq === "daily"){
+      ensureTask(id).done = false;
+    } else {
+      state.tasks[id] = { claimedBy: null, done: false };
+    }
+  });
+  await saveState();
+  renderAll();
+});
+
+// --- Bedrooms & storage spaces (per-room tabs) ---
+// Note: trash, whole-house vacuuming, and switches/handles/baseboards are left out here
+// since they're already covered by the Trash, Floors, and General zones above.
+const ROOM_IDS = ["lynx", "andry_moxxie", "closet_moxxie"];
+const ROOM_TASKS = {
+  lynx: {
+    daily: [
+      ["make_bed", "Make the bed", "light"],
+      ["clear_surfaces", "Clear nightstand & dresser \u2014 stray items back where they belong", "light"],
+      ["hamper", "Dirty clothes into the hamper, not the floor", "light"],
+      ["floor_scan", "Quick floor scan \u2014 pick up anything left out", "light"],
+      ["tidy_makeup", "Tidy up the makeup table", "light"],
+    ],
+    weekly: [
+      ["laundry", "Wash a load and put it away \u2014 folded/hung, not left in the basket", "moderate"],
+      ["dust", "Dust surfaces: dresser, nightstand, shelves", "light"],
+      ["mirror", "Wipe down the mirror & any glass surfaces", "light"],
+      ["closet", "Straighten the closet \u2014 hang up anything stray", "moderate"],
+      ["bedding", "Wash all bedding \u2014 sheets, pillowcases, blanket", "moderate"],
+      ["clean_altar", "Clean the altar", "light"],
+      ["repile_squish", "Re-pile the squishmallow pile", "light"],
+    ],
+    monthly: [
+      ["under_bed", "Clean out under the bed", "moderate"],
+      ["declutter", "Declutter one drawer, shelf, or surface \u2014 rotate which one each month", "moderate"],
+      ["mattress", "Vacuum the mattress", "moderate"],
+      ["windows", "Clean windows & window sills", "moderate"],
+      ["donate_pass", "Donate/toss pass \u2014 anything untouched in months", "heavy"],
+    ],
+  },
+  andry_moxxie: {
+    daily: [
+      ["make_bed", "Make the bed", "light"],
+      ["clear_surfaces", "Clear nightstand & dresser \u2014 stray items back where they belong", "light"],
+      ["hamper", "Dirty clothes into the hamper, not the floor", "light"],
+      ["floor_scan", "Quick floor scan \u2014 pick up anything left out", "light"],
+    ],
+    weekly: [
+      ["laundry", "Wash, dry & put away the shared towels", "light"],
+      ["dust", "Dust surfaces: dresser, nightstand, shelves", "light"],
+      ["mirror", "Wipe down the mirror & any glass surfaces", "light"],
+      ["closet", "Straighten the closet \u2014 hang up anything stray", "moderate"],
+      ["bedding", "Wash all bedding \u2014 sheets, pillowcases, blanket", "moderate"],
+      ["remake_squish", "Remake the squishmallow pile", "light"],
+    ],
+    monthly: [
+      ["under_bed", "Clean out under the bed", "moderate"],
+      ["declutter", "Declutter one drawer, shelf, or surface \u2014 rotate which one each month", "moderate"],
+      ["mattress", "Vacuum the mattress", "moderate"],
+      ["windows", "Clean windows & window sills", "moderate"],
+      ["donate_pass", "Donate/toss pass \u2014 anything untouched in months", "heavy"],
+    ],
+  },
+  closet_moxxie: {
+    daily: [
+      ["clear_floor", "Clear the floor \u2014 nothing left sitting on it", "light"],
+      ["hamper_or_hang", "Worn clothes into the hamper or back on a hanger \u2014 not draped over things", "light"],
+      ["quick_shelve", "Quick scan \u2014 anything grabbed today back on its shelf or hook", "light"],
+    ],
+    weekly: [
+      ["fold_put_away", "Fold & put away clean laundry \u2014 nothing left sitting in a basket", "moderate"],
+      ["straighten_shelves", "Straighten shelves & hanging rods \u2014 everything back in its spot", "moderate"],
+      ["dust_shelves", "Dust shelves & surfaces", "light"],
+      ["sweep_floor", "Sweep or vacuum the closet floor", "light"],
+    ],
+    monthly: [
+      ["declutter_pass", "Full declutter pass \u2014 rotate through one shelf or bin at a time", "moderate"],
+      ["donate_pass", "Donate/toss pass \u2014 anything unused in months", "heavy"],
+      ["seasonal_check", "Check stored/seasonal items for anything that needs washing before it goes back", "light"],
+      ["wipe_bins", "Wipe down shelves & storage bins", "light"],
+    ],
+  },
+};
+
+let bedState = {};
+ROOM_IDS.forEach(id => { bedState[id] = { daily:{}, weekly:{}, monthly:{} }; });
+
+function bedKey(roomId){ return `bedroom-${roomId}-v1`; }
+
+async function bedLoadState(){
+  for (const roomId of ROOM_IDS){
+    try{
+      const res = await window.storage.get(bedKey(roomId), true);
+      if (res && res.value){
+        const parsed = JSON.parse(res.value);
+        bedState[roomId] = { daily: parsed.daily||{}, weekly: parsed.weekly||{}, monthly: parsed.monthly||{} };
+      }
+    } catch(e){ /* no saved state yet */ }
+  }
+}
+async function bedSaveState(roomId){
+  try{ await window.storage.set(bedKey(roomId), JSON.stringify(bedState[roomId]), true); } catch(e){ console.error("Save failed", e); }
+}
+const BED_ASSIGNABLE_ROOMS = ["andry_moxxie"];
+function ensureBedTask(roomId, freq, id){
+  let t = bedState[roomId][freq][id];
+  if (!t || typeof t !== "object"){
+    t = { done: !!t };
+    bedState[roomId][freq][id] = t;
+  }
+  if (BED_ASSIGNABLE_ROOMS.includes(roomId) && freq === "daily" && !t.schedule){
+    t.schedule = {};
+    DAYS.forEach(d => { t.schedule[d] = null; });
+  }
+  return t;
+}
+function bedDayCellsHtml(roomId, freq, id, label, t){
+  return DAYS.map(d => {
+    const name = t.schedule ? t.schedule[d] : null;
+    const isToday = d === todayName();
+    const color = name ? colorFor(name) : null;
+    const style = color ? ` style="background:${color.bg}; color:${color.fg}; border-color:${color.bg};"` : "";
+    const isMine = myName && name === myName;
+    const disabledAttr = myName ? "" : " disabled";
+    let title;
+    if (!myName) title = "Set who you are on the Household Board tab first";
+    else if (isMine) title = `${d}: assigned to ${myName} — click to unassign`;
+    else if (name) title = `${d}: ${name} — click to take this day for ${myName}`;
+    else title = `${d}: unassigned — click to take this day for ${myName}`;
+    const display = name ? initialsOf(name) : d[0];
+    return `<button type="button" class="day-bubble${isToday?' today':''}${name?' assigned':''}${isMine?' mine':''}"${disabledAttr} data-bedroom="${roomId}" data-bedfreq="${freq}" data-bedtaskid="${id}" data-day="${d}"${style} title="${escapeHtml(title)}" aria-label="${escapeHtml(title)}">${escapeHtml(display)}</button>`;
+  }).join("");
+}
+function bedClaimHtml(roomId, freq, id, label, t){
+  const rosterOptions = ["", ...state.roster].map(n =>
+    `<option value="${escapeHtml(n)}" ${t.claimedBy===n?"selected":""}>${n===""?"Unclaimed":escapeHtml(n)}</option>`
+  ).join("");
+  const isMineClaim = myName && t.claimedBy === myName;
+  const quickDisabled = myName ? "" : " disabled";
+  const quickTitle = myName ? `Quick-claim for ${myName}` : "Set who you are on the Household Board tab first";
+  return `
+    <select class="claim-select" aria-label="Who's doing '${escapeHtml(label)}'" data-bedroom="${roomId}" data-bedfreq="${freq}" data-bedtaskid="${id}">
+      ${rosterOptions}
+    </select>
+    <button type="button" class="ghost small claim-quick${isMineClaim?' active':''}"${quickDisabled} data-bedroom="${roomId}" data-bedfreq="${freq}" data-bedtaskid="${id}" title="${escapeHtml(quickTitle)}">${isMineClaim ? "✓ Mine" : "Mine"}</button>
+  `;
+}
+function bedRenderSection(roomId, freq){
+  const body = document.querySelector(`[data-bedbody="${roomId}-${freq}"]`);
+  if (!body) return;
+  const tasks = ROOM_TASKS[roomId];
+  if (!tasks) return;
+  const assignable = BED_ASSIGNABLE_ROOMS.includes(roomId);
+  body.innerHTML = "";
+  tasks[freq].forEach(([id, label, tier]) => {
+    const t = ensureBedTask(roomId, freq, id);
+    const row = document.createElement("div");
+    row.className = "task-row" + (t.done ? " done" : "");
+    if (assignable && freq === "daily"){
+      const todayAssignee = t.schedule ? t.schedule[todayName()] : null;
+      row.innerHTML = `
+        <input type="checkbox" class="task-check" ${t.done?"checked":""} aria-label="Mark '${escapeHtml(label)}' done today" data-bedperson="${roomId}" data-bedsection="${freq}" data-bedid="${id}">
+        <span class="tier-tag ${tier}">${TIER[tier].label}</span>
+        <span class="task-main">
+          <span class="task-label">${escapeHtml(label)}</span>
+          <span class="today-badge${todayAssignee?"":" unassigned"}">${todayAssignee ? `Today: ${escapeHtml(todayAssignee)}` : "Today: unassigned"}</span>
+        </span>
+        <div class="day-row" role="group" aria-label="Assign days for '${escapeHtml(label)}'">
+          ${bedDayCellsHtml(roomId, freq, id, label, t)}
+        </div>
+      `;
+    } else if (assignable){
+      row.innerHTML = `
+        <input type="checkbox" class="task-check" ${t.done?"checked":""} aria-label="Mark '${escapeHtml(label)}' done" data-bedperson="${roomId}" data-bedsection="${freq}" data-bedid="${id}">
+        <span class="tier-tag ${tier}">${TIER[tier].label}</span>
+        <span class="task-main"><span class="task-label">${escapeHtml(label)}</span></span>
+        ${bedClaimHtml(roomId, freq, id, label, t)}
+      `;
+    } else {
+      row.innerHTML = `
+        <input type="checkbox" class="task-check" ${t.done?"checked":""} aria-label="Mark '${escapeHtml(label)}' done" data-bedperson="${roomId}" data-bedsection="${freq}" data-bedid="${id}">
+        <span class="tier-tag ${tier}">${TIER[tier].label}</span>
+        <span class="task-label">${escapeHtml(label)}</span>
+      `;
+    }
+    body.appendChild(row);
+  });
+}
+function bedRenderProgress(roomId){
+  const tasks = ROOM_TASKS[roomId];
+  if (!tasks) return;
+  let doneCount = 0, total = 0;
+  Object.entries(tasks).forEach(([freq, items]) => {
+    items.forEach(([id]) => { total++; if (ensureBedTask(roomId, freq, id).done) doneCount++; });
+  });
+  const el = document.getElementById(`bed-progress-${roomId}`);
+  if (el) el.textContent = `${doneCount} of ${total} checked across all sections`;
+}
+function bedRenderAll(){
+  ROOM_IDS.forEach(roomId => {
+    ["daily","weekly","monthly"].forEach(freq => bedRenderSection(roomId, freq));
+    bedRenderProgress(roomId);
+  });
+  renderMyChores();
+}
+document.addEventListener("change", async (e) => {
+  const el = e.target;
+  if (el.matches(".task-check[data-bedperson]")){
+    const roomId = el.getAttribute("data-bedperson");
+    const freq = el.getAttribute("data-bedsection");
+    const id = el.getAttribute("data-bedid");
+    ensureBedTask(roomId, freq, id).done = el.checked;
+    await bedSaveState(roomId);
+    bedRenderAll();
+    return;
+  }
+  if (el.matches(".claim-select[data-bedroom]")){
+    const roomId = el.getAttribute("data-bedroom");
+    const freq = el.getAttribute("data-bedfreq");
+    const id = el.getAttribute("data-bedtaskid");
+    ensureBedTask(roomId, freq, id).claimedBy = el.value || null;
+    await bedSaveState(roomId);
+    bedRenderAll();
+  }
+});
+document.addEventListener("click", async (e) => {
+  const resetBtn = e.target.closest("[data-bedreset]");
+  if (resetBtn){
+    const roomId = resetBtn.getAttribute("data-bedperson");
+    const freq = resetBtn.getAttribute("data-bedreset");
+    if (!confirm(`Clear ${freq} checkmarks for this space? (Who/day assignments stay as-is.)`)) return;
+    ROOM_TASKS[roomId][freq].forEach(([id]) => { ensureBedTask(roomId, freq, id).done = false; });
+    await bedSaveState(roomId);
+    bedRenderAll();
+    return;
+  }
+  const dayBubble = e.target.closest(".day-bubble[data-bedroom]");
+  if (dayBubble){
+    if (!myName) return;
+    const roomId = dayBubble.getAttribute("data-bedroom");
+    const freq = dayBubble.getAttribute("data-bedfreq");
+    const id = dayBubble.getAttribute("data-bedtaskid");
+    const day = dayBubble.getAttribute("data-day");
+    const t = ensureBedTask(roomId, freq, id);
+    t.schedule[day] = (t.schedule[day] === myName) ? null : myName;
+    await bedSaveState(roomId);
+    bedRenderAll();
+    return;
+  }
+  const quickBtn = e.target.closest(".claim-quick[data-bedroom]");
+  if (quickBtn){
+    if (!myName) return;
+    const roomId = quickBtn.getAttribute("data-bedroom");
+    const freq = quickBtn.getAttribute("data-bedfreq");
+    const id = quickBtn.getAttribute("data-bedtaskid");
+    const t = ensureBedTask(roomId, freq, id);
+    t.claimedBy = (t.claimedBy === myName) ? null : myName;
+    await bedSaveState(roomId);
+    bedRenderAll();
+  }
+});
+
+// --- My Chores (summary of everything assigned to the current "I am") ---
+function computeMyChores(){
+  const today = [], week = [], month = [];
+  if (!myName) return { today, week, month };
+
+  allTaskIds().forEach(id => {
+    const meta = taskMeta(id);
+    if (!meta) return;
+    const t = state.tasks[id];
+    if (!t) return;
+    if (meta.freq === "daily"){
+      if (t.schedule && t.schedule[todayName()] === myName) today.push({ label: meta.label, source: meta.zone.name });
+      const myDays = t.schedule ? DAYS.filter(d => t.schedule[d] === myName) : [];
+      if (myDays.length) week.push({ label: meta.label, source: meta.zone.name, days: myDays });
+    } else if (meta.freq === "eod"){
+      if (t.claimedBy === myName) week.push({ label: meta.label, source: meta.zone.name, note: "every other day" });
+    } else if (meta.freq === "weekly"){
+      if (t.claimedBy === myName) week.push({ label: meta.label, source: meta.zone.name });
+    } else if (meta.freq === "monthly"){
+      if (t.claimedBy === myName) month.push({ label: meta.label, source: meta.zone.name });
+    }
+  });
+
+  const amLabel = "Andry & Moxxie Bedroom";
+  ["daily","weekly","monthly"].forEach(freq => {
+    ROOM_TASKS.andry_moxxie[freq].forEach(([id, label]) => {
+      const t = ensureBedTask("andry_moxxie", freq, id);
+      if (freq === "daily"){
+        if (t.schedule && t.schedule[todayName()] === myName) today.push({ label, source: amLabel });
+        const myDays = t.schedule ? DAYS.filter(d => t.schedule[d] === myName) : [];
+        if (myDays.length) week.push({ label, source: amLabel, days: myDays });
+      } else if (freq === "weekly"){
+        if (t.claimedBy === myName) week.push({ label, source: amLabel });
+      } else if (freq === "monthly"){
+        if (t.claimedBy === myName) month.push({ label, source: amLabel });
+      }
+    });
+  });
+
+  if (laundryState.schedule[todayName()] === myName) today.push({ label: "Laundry", source: "Laundry" });
+  const laundryDays = DAYS.filter(d => laundryState.schedule[d] === myName);
+  if (laundryDays.length) week.push({ label: "Laundry", source: "Laundry", days: laundryDays });
+
+  return { today, week, month };
+}
+function mychoresListHtml(items, emptyText){
+  if (!items.length) return `<p class="panel-sub">${escapeHtml(emptyText)}</p>`;
+  return `<ul class="mychores-list">` + items.map(it => {
+    const note = it.days ? ` <span class="mychores-days">(${escapeHtml(it.days.join(", "))})</span>`
+      : (it.note ? ` <span class="mychores-days">(${escapeHtml(it.note)})</span>` : "");
+    return `<li><span class="mychores-label">${escapeHtml(it.label)}</span><span class="mychores-source">${escapeHtml(it.source)}</span>${note}</li>`;
+  }).join("") + `</ul>`;
+}
+function renderMyChores(){
+  const panel = document.getElementById("mychores-content");
+  if (!panel) return;
+  if (!myName){
+    panel.innerHTML = `<section class="panel"><p class="panel-sub">Set who you are on the Household Board tab to see your chores here.</p></section>`;
+    return;
+  }
+  const { today, week, month } = computeMyChores();
+  panel.innerHTML = `
+    <section class="panel">
+      <h2>Today</h2>
+      ${mychoresListHtml(today, "Nothing assigned to you today.")}
+    </section>
+    <section class="panel">
+      <h2>This Week</h2>
+      ${mychoresListHtml(week, "Nothing assigned to you this week.")}
+    </section>
+    <section class="panel">
+      <h2>This Month</h2>
+      ${mychoresListHtml(month, "Nothing assigned to you this month.")}
+    </section>
+  `;
+}
+
+document.querySelectorAll(".tab-btn").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".tab-btn").forEach(b => { b.classList.remove("active"); b.setAttribute("aria-selected","false"); });
+    btn.classList.add("active"); btn.setAttribute("aria-selected","true");
+    document.querySelectorAll(".tab-panel").forEach(p => p.setAttribute("hidden",""));
+    document.querySelector(`.tab-panel[data-tabpanel="${btn.getAttribute("data-tab")}"]`).removeAttribute("hidden");
+  });
+});
+
+// --- Laundry (weekly day-of-week rotation, shared washer/dryer loads) ---
+const LAUNDRY_STORAGE_KEY = "laundry-schedule-v1";
+let laundryState = { schedule: {} };
+DAYS.forEach(d => { laundryState.schedule[d] = null; });
+
+async function laundryLoadState(){
+  try{
+    const res = await window.storage.get(LAUNDRY_STORAGE_KEY, true);
+    if (res && res.value){
+      const parsed = JSON.parse(res.value);
+      laundryState.schedule = parsed.schedule || {};
+      DAYS.forEach(d => { if (!(d in laundryState.schedule)) laundryState.schedule[d] = null; });
+    }
+  } catch(e){ /* no saved state yet */ }
+}
+async function laundrySaveState(){
+  try{ await window.storage.set(LAUNDRY_STORAGE_KEY, JSON.stringify(laundryState), true); } catch(e){ console.error("Save failed", e); }
+}
+function laundryChartHtml(){
+  return DAYS.map(d => {
+    const name = laundryState.schedule[d];
+    const isToday = d === todayName();
+    const color = name ? colorFor(name) : null;
+    const style = color ? ` style="background:${color.bg}; color:${color.fg}; border-color:${color.bg};"` : "";
+    const isMine = myName && name === myName;
+    const disabledAttr = myName ? "" : " disabled";
+    let title;
+    if (!myName) title = "Set who you are on the Household Board tab first";
+    else if (isMine) title = `${d}: assigned to ${myName} — click to unassign`;
+    else if (name) title = `${d}: ${name} — click to take laundry for ${myName}`;
+    else title = `${d}: unassigned — click to take laundry for ${myName}`;
+    return `<button type="button" class="laundry-day${isToday?' today':''}${name?' assigned':''}"${disabledAttr} data-laundryday="${d}"${style} title="${escapeHtml(title)}" aria-label="${escapeHtml(title)}">
+      <span class="laundry-day-label">${d}</span>
+      <span class="laundry-day-name${name?"":" empty"}">${name ? escapeHtml(name) : "Open"}</span>
+    </button>`;
+  }).join("");
+}
+function laundryRenderAll(){
+  const chart = document.getElementById("laundry-chart");
+  if (!chart) return;
+  chart.innerHTML = laundryChartHtml();
+  renderMyChores();
+}
+document.addEventListener("click", async (e) => {
+  const cell = e.target.closest(".laundry-day[data-laundryday]");
+  if (!cell || !myName) return;
+  const day = cell.getAttribute("data-laundryday");
+  laundryState.schedule[day] = (laundryState.schedule[day] === myName) ? null : myName;
+  await laundrySaveState();
+  laundryRenderAll();
+});
+
+// Renamed from a self-invoking IIFE: storage.js calls init() after a successful login.
+async function init(){
+  await loadState();
+  allTaskIds().forEach(ensureTask);
+  renderAll();
+  await bedLoadState();
+  bedRenderAll();
+  await laundryLoadState();
+  laundryRenderAll();
+}
+window.init = init;

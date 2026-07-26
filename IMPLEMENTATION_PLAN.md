@@ -16,16 +16,18 @@ window.storage.get(key, shared)          // -> { value: "<json string>" } | null
 window.storage.set(key, value, shared)   // -> void
 ```
 
-across a handful of keys:
+across exactly **6 keys** (verified against `chore-board(8).html`):
 
 | Key | Scope | Holds |
 |---|---|---|
 | `chore-board-v2` | shared | roster + all household board task state |
-| `bedroom-<roomId>-v1` | shared | each bedroom/closet tab's task state |
+| `bedroom-lynx-v1` | shared | Lynx bedroom tab state |
+| `bedroom-andry_moxxie-v1` | shared | Andry & Moxxie bedroom tab state |
+| `bedroom-closet_moxxie-v1` | shared | Moxxie closet tab state |
 | `laundry-schedule-v1` | shared | the 7-day laundry rotation |
 | `my-name` | **personal** | the "I am ___" selection (stays per-device) |
 
-Total data: a few KB of JSON. So we **reimplement only `window.storage`** — a ~30-line shim — and leave all tested logic (`renderAll`, `bedRenderAll`, `laundryRenderAll`, `ZONES`, `ensureTask`, day-bubbles, My Chores aggregation) byte-for-byte intact.
+That's **5 shared keys + 1 personal key** (`ROOM_IDS = ["lynx", "andry_moxxie", "closet_moxxie"]`, each → `bedroom-<id>-v1` via `bedKey()`). Only `get` and `set` are ever called — no `delete`/`list`. The read contract is `{ value }` or `null` (`if (res && res.value)`). Total data: a few KB of JSON. So we **reimplement only `window.storage`** — a ~30-line shim — and leave all tested logic (`renderAll`, `bedRenderAll`, `laundryRenderAll`, `ZONES`, `ensureTask`, day-bubbles, My Chores aggregation) byte-for-byte intact.
 
 - `shared: true` keys → Supabase `kv` table.
 - `shared: false` (`my-name`) → stays in browser `localStorage`. This is correct: identity is intentionally per-device.
@@ -183,7 +185,7 @@ async function reloadEverything() {
 }
 ```
 
-**One small edit to `app.js`:** the prototype's trailing `(async function init(){ … })()` IIFE becomes a named `async function init(){ … }` that is *not* self-invoked — `storage.js` calls `init()` after login instead. That's the only structural change to the ported logic.
+**One small edit to `app.js`:** the prototype ends with a self-invoking `(async function init(){ await loadState(); … await bedLoadState(); … await laundryLoadState(); … })();`. That becomes a named `async function init(){ … }` that is *not* self-invoked — `storage.js` calls `init()` after login instead. That's the only structural change to the ported logic. **Verified safe:** the file has **zero inline HTML event handlers** (no `onclick="…"` in markup — all listeners are attached in JS via `el.onclick` / `data-*` delegation), so keeping `app.js` a classic script with the UMD supabase-js global works without module-scope changes.
 
 **Login UI:** a small parchment card overlay (email + passphrase + "Enter") styled with the existing design tokens. Session persists, so it appears once per device.
 
@@ -249,15 +251,15 @@ The `kv` table never changes shape as tasks evolve — new task ids just start w
 
 ## 10. Phasing
 
-| Phase | Work | Depends on you |
+| Phase | Work | Status |
 |---|---|---|
-| **0. Accounts** | Create Supabase project; give me the Project URL + anon key; pick the shared passphrase (you set it, I never see it). | ✅ you do this |
-| **1. Scaffold** | Split prototype into the file layout above; wire load order; extract the image. | — |
-| **2. Supabase** | Run the SQL; create the shared login; disable signups. | you click through §4 |
-| **3. Shim + gate** | Add `storage.js` (shim, login, realtime); rename `init`. | — |
-| **4. Deploy** | Enable Pages; add keep-alive Action. | you flip the Pages toggle |
-| **5. Verify** | Run the §7 checks, especially cross-device sync. | — |
-| **6. Content revisions** | Apply the pending task edits (below). Pure data, no architecture impact. | some items blocked on household input |
+| **0. Accounts** | Supabase project + Project URL + anon key. | ✅ **done** — URL & anon key wired into `config.js`. |
+| **1. Scaffold** | Split prototype into files; wire load order; extract the image. | ✅ **done** — see repo tree; 7 MB → 11 KB html + cached image. |
+| **3. Shim + gate** | `storage.js` (shim, login, realtime); rename `init`. | ✅ **done** — built, statically verified (IDs, load order, no base64 leak). Not yet run end-to-end (needs deploy + §2). |
+| **2. Supabase** | Run the SQL; create the shared login; disable signups. | ⏳ **you** — SETUP.md Missions 2 & 3. |
+| **4. Deploy** | Commit + push; enable Pages; add keep-alive secrets. | ⏳ needs your go-ahead to push (publishing) + a Pages toggle. |
+| **5. Verify** | Run the §7 checks, especially cross-device sync. | ⏳ after 2 + 4. |
+| **6. Content revisions** | Apply the pending task edits (below). Pure data, no architecture impact. | ⏳ some items blocked on household input. |
 
 ### Pending content revisions (Phase 6 — tracked, not yet applied)
 From your latest notes — all data edits to the task arrays, queued for after the platform is standing:

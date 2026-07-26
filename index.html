@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Household Chore Board</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700&family=Pirata+One&family=EB+Garamond:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="stage">
+<div class="witch-orb witch-orb-a"></div>
+<div class="witch-orb witch-orb-b"></div>
+<div class="witch-orb witch-orb-c"></div>
+<div class="witch-orb witch-orb-d"></div>
+<div class="stage-forest-wrap"><div class="stage-forest"></div></div>
+<div class="stage-shade"></div>
+<div class="stage-stars"></div>
+<div class="stage-stars-edge"></div>
+<div class="stage-stars-tile-a"></div>
+<div class="stage-stars-tile-b"></div>
+<div class="wrap">
+
+  <header class="top">
+    <p class="eyebrow">Shared &amp; live — everyone who opens this sees the same board</p>
+    <h1>Household Chore Board</h1>
+    <p class="lede">Organized by how often things need doing, not just by room. Filter by frequency below, claim what fits what you can do today.</p>
+  </header>
+
+  <div class="tab-bar" role="tablist">
+    <button type="button" class="tab-btn active" data-tab="household" role="tab" aria-selected="true">Household Board</button>
+    <button type="button" class="tab-btn" data-tab="bedroom-lynx" role="tab" aria-selected="false">Lynx Bedroom</button>
+    <button type="button" class="tab-btn" data-tab="bedroom-andry_moxxie" role="tab" aria-selected="false">Andry &amp; Moxxie Bedroom</button>
+    <button type="button" class="tab-btn" data-tab="closet-moxxie" role="tab" aria-selected="false">Moxxie Closet</button>
+    <button type="button" class="tab-btn" data-tab="laundry" role="tab" aria-selected="false">Laundry</button>
+    <button type="button" class="tab-btn" data-tab="my-chores" role="tab" aria-selected="false">My Chores</button>
+  </div>
+
+  <div class="tab-panel" data-tabpanel="household">
+
+  <div class="legend">
+    <div class="legend-item"><span class="legend-dot light"></span><span class="legend-text"><b>Light</b><span>Wiping, sorting, quick pickup</span></span></div>
+    <div class="legend-item"><span class="legend-dot moderate"></span><span class="legend-text"><b>Moderate</b><span>Carrying, lifting, sustained scrubbing</span></span></div>
+    <div class="legend-item"><span class="legend-dot heavy"></span><span class="legend-text"><b>Heavy</b><span>Kneeling, bending, deep scrubbing</span></span></div>
+  </div>
+  <p class="rotation-hint">Daily tasks rotate across the week — set who you are above, then tap a day's bubble to take that day for yourself (tap again to release it).</p>
+
+  <section class="panel">
+    <h2>Standing rules (not scheduled tasks)</h2>
+    <ul class="rules-list">
+      <li><b>Dishes</b> always return to the kitchen when you're done with them, wherever you were using them.</li>
+      <li><b>Standing/folding tables</b> get put away the same day they're used — never left out overnight.</li>
+      <li><b>Blankets</b> go in the living room basket, not left on the couch.</li>
+      <li><b>Laundry</b> is everyone's own responsibility, but every time the machines are used: clear the top of the washer/dryer, clear the lint trap, take clothes out when done.</li>
+      <li><b>Car (Kia)</b> — don't leave stuff in it when you get out.</li>
+      <li><b>Front hallway floor</b> stays clear so the robot vacuum can run.</li>
+    </ul>
+  </section>
+
+  <section class="panel">
+    <h2>Who's on the board</h2>
+    <div class="me-row">
+      <label for="me-select">I am:</label>
+      <select id="me-select"></select>
+      <input id="new-name" type="text" placeholder="Add a name" style="width:140px;">
+      <button id="add-name-btn">Add</button>
+    </div>
+    <div id="roster-grid" class="roster-grid"></div>
+  </section>
+
+  <div class="filter-row" id="filter-row"></div>
+
+  <div id="zones"></div>
+
+  <footer class="actions">
+    <p class="note">Daily tasks reset most often — clear those each morning. "Reset everything" also clears every-other-day, weekly, and monthly tasks for a fresh cycle. As-needed and one-time / pending items aren't touched by either reset — check them off and uncheck when they need doing again.</p>
+    <div class="reset-group">
+      <button id="reset-daily-btn" class="ghost">Reset daily tasks</button>
+      <button id="reset-all-btn" class="danger">Reset everything</button>
+    </div>
+  </footer>
+
+  </div>
+
+  <div class="tab-panel" data-tabpanel="bedroom-lynx" hidden>
+
+  <p class="lede" style="margin: 0 0 18px;">A maintenance routine, not a deep clean — small habits so clutter, laundry, dust, and floors never pile up at once. Shared on this board like everything else above, so anyone can see how each bedroom's routine is going.</p>
+
+  <section class="panel">
+    <div class="panel-head">
+      <h2>Daily &middot; ~5 minutes</h2>
+      <button type="button" class="ghost small" data-bedperson="lynx" data-bedreset="daily">Reset today</button>
+    </div>
+    <p class="panel-sub">The quick reset — keeps things from sliding backward.</p>
+    <div class="task-body" data-bedbody="lynx-daily"></div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <h2>Weekly</h2>
+      <button type="button" class="ghost small" data-bedperson="lynx" data-bedreset="weekly">Reset week</button>
+    </div>
+    <p class="panel-sub">Pick a day that works and knock these out together.</p>
+    <div class="task-body" data-bedbody="lynx-weekly"></div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <h2>Monthly</h2>
+      <button type="button" class="ghost small" data-bedperson="lynx" data-bedreset="monthly">Reset month</button>
+    </div>
+    <p class="panel-sub">The deeper pass — this is where clutter actually leaves the room.</p>
+    <div class="task-body" data-bedbody="lynx-monthly"></div>
+  </section>
+
+  <p class="progress-note" id="bed-progress-lynx"></p>
+
+  </div>
+
+  <div class="tab-panel" data-tabpanel="bedroom-andry_moxxie" hidden>
+
+  <p class="lede" style="margin: 0 0 18px;">A maintenance routine, not a deep clean — small habits so clutter, laundry, dust, and floors never pile up at once. One shared room, one shared list. Shared on this board like everything else above.</p>
+  <p class="rotation-hint">Daily tasks rotate across the week — set who you are on the Household Board tab, then tap a day's bubble to take it (tap again to release it). Weekly &amp; monthly tasks use the dropdown, or the Mine button next to each one.</p>
+
+  <section class="panel">
+    <div class="panel-head">
+      <h2>Daily &middot; ~5 minutes</h2>
+      <button type="button" class="ghost small" data-bedperson="andry_moxxie" data-bedreset="daily">Reset today</button>
+    </div>
+    <p class="panel-sub">The quick reset — keeps things from sliding backward.</p>
+    <div class="task-body" data-bedbody="andry_moxxie-daily"></div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <h2>Weekly</h2>
+      <button type="button" class="ghost small" data-bedperson="andry_moxxie" data-bedreset="weekly">Reset week</button>
+    </div>
+    <p class="panel-sub">Pick a day that works and knock these out together.</p>
+    <div class="task-body" data-bedbody="andry_moxxie-weekly"></div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <h2>Monthly</h2>
+      <button type="button" class="ghost small" data-bedperson="andry_moxxie" data-bedreset="monthly">Reset month</button>
+    </div>
+    <p class="panel-sub">The deeper pass — this is where clutter actually leaves the room.</p>
+    <div class="task-body" data-bedbody="andry_moxxie-monthly"></div>
+  </section>
+
+  <p class="progress-note" id="bed-progress-andry_moxxie"></p>
+
+  </div>
+
+  <div class="tab-panel" data-tabpanel="closet-moxxie" hidden>
+
+  <p class="lede" style="margin: 0 0 18px;">Mostly storage — Moxxie's stuff and clothes rather than a lived-in room, so the routine here leans on shelving, folding, and rotating through what's stored, not floors and bedding.</p>
+
+  <section class="panel">
+    <div class="panel-head">
+      <h2>Daily &middot; ~5 minutes</h2>
+      <button type="button" class="ghost small" data-bedperson="closet_moxxie" data-bedreset="daily">Reset today</button>
+    </div>
+    <p class="panel-sub">The quick reset — keeps things from sliding backward.</p>
+    <div class="task-body" data-bedbody="closet_moxxie-daily"></div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <h2>Weekly</h2>
+      <button type="button" class="ghost small" data-bedperson="closet_moxxie" data-bedreset="weekly">Reset week</button>
+    </div>
+    <p class="panel-sub">Pick a day that works and knock these out together.</p>
+    <div class="task-body" data-bedbody="closet_moxxie-weekly"></div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <h2>Monthly</h2>
+      <button type="button" class="ghost small" data-bedperson="closet_moxxie" data-bedreset="monthly">Reset month</button>
+    </div>
+    <p class="panel-sub">The deeper pass — this is where clutter actually leaves the space.</p>
+    <div class="task-body" data-bedbody="closet_moxxie-monthly"></div>
+  </section>
+
+  <p class="progress-note" id="bed-progress-closet_moxxie"></p>
+
+  </div>
+
+  <div class="tab-panel" data-tabpanel="laundry" hidden>
+
+  <p class="lede" style="margin: 0 0 6px;">A weekly rotation for shared washer/dryer loads — this is separate from everyone's own personal laundry, which each person handles on their own.</p>
+  <p class="rotation-hint">Set who you are on the Household Board tab, then tap a day to take laundry duty (tap again to release it).</p>
+
+  <section class="panel">
+    <div class="panel-head">
+      <h2>Laundry Days</h2>
+    </div>
+    <p class="panel-sub">Tap a day to take laundry duty, tap again to release it. Whoever's assigned handles a full load that day — wash, dry, fold, put away.</p>
+    <div class="laundry-chart" id="laundry-chart"></div>
+  </section>
+
+  </div>
+
+  <div class="tab-panel" data-tabpanel="my-chores" hidden>
+
+  <p class="lede" style="margin: 0 0 18px;">Everything currently assigned to whoever you've set as "I am" on the Household Board tab — pulled live from the board, the bedrooms, and laundry.</p>
+
+  <div id="mychores-content"></div>
+
+  </div>
+
+</div>
+</div>
+
+
+  <!-- Shared household login gate (see storage.js). Hidden once a session exists. -->
+  <div id="login-gate" class="login-gate" hidden>
+    <form class="login-card" id="login-form">
+      <h2 class="login-title">The Grimoire is Sealed</h2>
+      <p class="login-sub">Enter the household passphrase to open the board.</p>
+      <label class="login-label" for="login-email">Household email</label>
+      <input class="login-input" id="login-email" type="email" autocomplete="username" value="sollux@ravenholm.local" required>
+      <label class="login-label" for="login-pass">Passphrase</label>
+      <input class="login-input" id="login-pass" type="password" autocomplete="current-password" placeholder="••••••••" required>
+      <button class="login-btn" type="submit">Unseal</button>
+      <p class="login-error" id="login-error" role="alert" hidden></p>
+    </form>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="config.js"></script>
+  <script src="app.js"></script>
+  <script src="storage.js"></script>
+</body>
+</html>
