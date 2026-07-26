@@ -130,10 +130,12 @@
       radial-gradient(1px 1px at 95% 45%, #fff 0, transparent 60%);
   }
   .witch-orb{ position: absolute; z-index:0; pointer-events:none; border-radius:50%; filter: blur(28px); }
-  .witch-orb-a{ top:6%; left:-8%; width:38%; padding-bottom:38%; background: radial-gradient(circle, rgba(122,255,140,.30) 0%, rgba(122,255,140,0) 70%); animation: witch-float-a 16s ease-in-out infinite; }
-  .witch-orb-b{ top:32%; right:-10%; width:42%; padding-bottom:42%; background: radial-gradient(circle, rgba(178,102,255,.32) 0%, rgba(178,102,255,0) 70%); animation: witch-float-b 20s ease-in-out infinite; }
-  .witch-orb-c{ top:68%; left:-6%; width:34%; padding-bottom:34%; background: radial-gradient(circle, rgba(232,196,104,.22) 0%, rgba(232,196,104,0) 70%); animation: witch-float-c 18s ease-in-out infinite; }
-  .witch-orb-d{ top:78%; right:-8%; width:36%; padding-bottom:36%; background: radial-gradient(circle, rgba(200,90,255,.28) 0%, rgba(200,90,255,0) 70%); animation: witch-float-a 22s ease-in-out infinite; }
+  /* Orbs are static: animating a blur(28px) element re-rasterizes the blur every
+     frame and spins the CPU/GPU fan (esp. Firefox). The glow stays; the drift is gone. */
+  .witch-orb-a{ top:6%; left:-8%; width:38%; padding-bottom:38%; background: radial-gradient(circle, rgba(122,255,140,.30) 0%, rgba(122,255,140,0) 70%); }
+  .witch-orb-b{ top:32%; right:-10%; width:42%; padding-bottom:42%; background: radial-gradient(circle, rgba(178,102,255,.32) 0%, rgba(178,102,255,0) 70%); }
+  .witch-orb-c{ top:68%; left:-6%; width:34%; padding-bottom:34%; background: radial-gradient(circle, rgba(232,196,104,.22) 0%, rgba(232,196,104,0) 70%); }
+  .witch-orb-d{ top:78%; right:-8%; width:36%; padding-bottom:36%; background: radial-gradient(circle, rgba(200,90,255,.28) 0%, rgba(200,90,255,0) 70%); }
   .wrap{ max-width: 900px; margin: 0 auto; position: relative; z-index: 1; }
 
   header.top{ margin-bottom: 18px; }
@@ -369,7 +371,8 @@
 /* --- shared household login gate (added for Supabase auth) --- */
 .login-gate{ position:fixed; inset:0; z-index:1000; display:flex; align-items:center; justify-content:center;
   background:rgba(8,6,16,.82); padding:20px; }
-@supports (backdrop-filter: blur(6px)){ .login-gate{ backdrop-filter:blur(6px); } }
+/* No backdrop-filter: it re-blurred the animated background every frame (fan/CPU).
+   The .82 dark overlay above already dims the board behind the login card. */
 .login-gate[hidden]{ display:none; }
 .login-card{ width:100%; max-width:360px; color:var(--ink);
   background:linear-gradient(180deg,var(--parchment-1),var(--parchment-2));
@@ -389,3 +392,12 @@
 .login-error{ margin:14px 0 0; padding:8px 10px; font-size:14px; border-radius:6px;
   color:var(--heavy-text); background:var(--heavy-bg); border:1px solid var(--heavy); }
 .login-error[hidden]{ display:none; }
+
+/* Respect the OS "reduce motion" setting: kill every decorative animation.
+   Turn it on (Firefox: about:preferences -> "prefers-reduced-motion" via OS
+   accessibility settings) for a completely still page. */
+@media (prefers-reduced-motion: reduce){
+  .stage-stars, .stage-stars-edge, .stage-stars-tile-a, .stage-stars-tile-b,
+  .witch-orb, [class^="witch-"], [class*=" witch-"]{ animation: none !important; }
+  *, *::before, *::after{ animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; }
+}
