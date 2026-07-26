@@ -410,7 +410,7 @@ function renderZones(){
   });
 }
 
-function renderAll(){ renderMeSelect(); renderRoster(); renderFilters(); renderZones(); renderPending(); renderShopping(); renderMyChores(); }
+function renderAll(){ const _y = window.scrollY; renderMeSelect(); renderRoster(); renderFilters(); renderZones(); renderPending(); renderShopping(); renderMyChores(); if (window.scrollY !== _y) window.scrollTo(0, _y); }
 
 // --- Editable lists: One-time/Pending (household board) + Shopping (own tab) ---
 function editListFor(kind){ return kind === "shopping" ? state.shopping : state.pending; }
@@ -696,11 +696,13 @@ function bedRenderProgress(roomId){
   if (el) el.textContent = `${doneCount} of ${total} checked across all sections`;
 }
 function bedRenderAll(){
+  const _y = window.scrollY;
   ROOM_IDS.forEach(roomId => {
     ["daily","weekly","monthly"].forEach(freq => bedRenderSection(roomId, freq));
     bedRenderProgress(roomId);
   });
   renderMyChores();
+  if (window.scrollY !== _y) window.scrollTo(0, _y);
 }
 document.addEventListener("change", async (e) => {
   const el = e.target;
@@ -769,16 +771,17 @@ function computeMyChores(){
     if (!meta) return;
     const t = state.tasks[id];
     if (!t) return;
+    const ref = { kind: "board", id };
     if (meta.freq === "daily"){
-      if (t.schedule && t.schedule[todayName()] === myName) today.push({ label: meta.label, source: meta.zone.name });
+      if (t.schedule && t.schedule[todayName()] === myName) today.push({ label: meta.label, source: meta.zone.name, ref, done: !!t.done });
       const myDays = t.schedule ? DAYS.filter(d => t.schedule[d] === myName) : [];
       if (myDays.length) week.push({ label: meta.label, source: meta.zone.name, days: myDays });
     } else if (meta.freq === "eod"){
-      if (t.claimedBy === myName) week.push({ label: meta.label, source: meta.zone.name, note: "every other day" });
+      if (t.claimedBy === myName) week.push({ label: meta.label, source: meta.zone.name, note: "every other day", ref, done: !!t.done });
     } else if (meta.freq === "weekly"){
-      if (t.claimedBy === myName) week.push({ label: meta.label, source: meta.zone.name });
+      if (t.claimedBy === myName) week.push({ label: meta.label, source: meta.zone.name, ref, done: !!t.done });
     } else if (meta.freq === "monthly"){
-      if (t.claimedBy === myName) month.push({ label: meta.label, source: meta.zone.name });
+      if (t.claimedBy === myName) month.push({ label: meta.label, source: meta.zone.name, ref, done: !!t.done });
     }
   });
 
@@ -786,14 +789,15 @@ function computeMyChores(){
   ["daily","weekly","monthly"].forEach(freq => {
     ROOM_TASKS.andry_moxxie[freq].forEach(([id, label]) => {
       const t = ensureBedTask("andry_moxxie", freq, id);
+      const ref = { kind: "bed", roomId: "andry_moxxie", freq, id };
       if (freq === "daily"){
-        if (t.schedule && t.schedule[todayName()] === myName) today.push({ label, source: amLabel });
+        if (t.schedule && t.schedule[todayName()] === myName) today.push({ label, source: amLabel, ref, done: !!t.done });
         const myDays = t.schedule ? DAYS.filter(d => t.schedule[d] === myName) : [];
         if (myDays.length) week.push({ label, source: amLabel, days: myDays });
       } else if (freq === "weekly"){
-        if (t.claimedBy === myName) week.push({ label, source: amLabel });
+        if (t.claimedBy === myName) week.push({ label, source: amLabel, ref, done: !!t.done });
       } else if (freq === "monthly"){
-        if (t.claimedBy === myName) month.push({ label, source: amLabel });
+        if (t.claimedBy === myName) month.push({ label, source: amLabel, ref, done: !!t.done });
       }
     });
   });
@@ -809,9 +813,27 @@ function mychoresListHtml(items, emptyText){
   return `<ul class="mychores-list">` + items.map(it => {
     const note = it.days ? ` <span class="mychores-days">(${escapeHtml(it.days.join(", "))})</span>`
       : (it.note ? ` <span class="mychores-days">(${escapeHtml(it.note)})</span>` : "");
-    return `<li><span class="mychores-label">${escapeHtml(it.label)}</span><span class="mychores-source">${escapeHtml(it.source)}</span>${note}</li>`;
+    const check = it.ref
+      ? `<input type="checkbox" class="mychores-check" ${it.done ? "checked" : ""} data-refkind="${it.ref.kind}" data-id="${escapeHtml(it.ref.id)}"${it.ref.roomId ? ` data-room="${escapeHtml(it.ref.roomId)}" data-freq="${escapeHtml(it.ref.freq)}"` : ""} aria-label="Mark done">`
+      : `<span class="mychores-nocheck"></span>`;
+    return `<li class="mychores-item${it.done ? " done" : ""}">${check}<span class="mychores-label">${escapeHtml(it.label)}</span><span class="mychores-source">${escapeHtml(it.source)}</span>${note}</li>`;
   }).join("") + `</ul>`;
 }
+// Crossing off in My Chores toggles the underlying task's done and reflects everywhere.
+document.addEventListener("change", (e) => {
+  const cb = e.target.closest(".mychores-check");
+  if (!cb) return;
+  const kind = cb.getAttribute("data-refkind");
+  if (kind === "board"){
+    ensureTask(cb.getAttribute("data-id")).done = cb.checked;
+    saveState();
+  } else if (kind === "bed"){
+    const room = cb.getAttribute("data-room"), freq = cb.getAttribute("data-freq"), id = cb.getAttribute("data-id");
+    ensureBedTask(room, freq, id).done = cb.checked;
+    bedSaveState(room);
+  }
+  renderAll(); bedRenderAll();
+});
 function renderMyChores(){
   const panel = document.getElementById("mychores-content");
   if (!panel) return;
