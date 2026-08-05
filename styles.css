@@ -452,3 +452,10 @@ html{ background:#0c0a1c; }
 .mychores-check{ width:18px; height:18px; flex:0 0 auto; cursor:pointer; accent-color:var(--leather); }
 .mychores-nocheck{ width:18px; flex:0 0 auto; display:inline-block; }
 .mychores-item.done .mychores-label{ text-decoration:line-through; color:var(--ink-muted); }
+
+/* Per-day completion badge on the rotation bubbles (green ✓ on the corner) */
+.day-bubble{ position:relative; overflow:visible; }
+.day-done{ position:absolute; top:-6px; right:-6px; width:16px; height:16px; border-radius:50%;
+  background:#2e7d32; color:#fff; font-size:11px; font-weight:700; line-height:16px; text-align:center;
+  border:1.5px solid var(--parchment-1); box-shadow:0 1px 2px rgba(0,0,0,.45); pointer-events:none; }
+.day-bubble.day-complete{ border-color:#2e7d32; }

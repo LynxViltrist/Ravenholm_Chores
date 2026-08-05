@@ -167,7 +167,8 @@ function dayCellsHtml(id, label, t){
     else if (name) title = `${d}: ${name} — click to take this day for ${myName}`;
     else title = `${d}: unassigned — click to take this day for ${myName}`;
     const display = name ? initialsOf(name) : d[0];
-    return `<button type="button" class="day-bubble${isToday?' today':''}${name?' assigned':''}${isMine?' mine':''}"${disabledAttr} data-task="${id}" data-day="${d}"${style} title="${escapeHtml(title)}" aria-label="${escapeHtml(title)}">${escapeHtml(display)}</button>`;
+    const isDone = t.doneDays && t.doneDays[d];
+    return `<button type="button" class="day-bubble${isToday?' today':''}${name?' assigned':''}${isMine?' mine':''}${isDone?' day-complete':''}"${disabledAttr} data-task="${id}" data-day="${d}"${style} title="${escapeHtml(title)}" aria-label="${escapeHtml(title)}">${escapeHtml(display)}${isDone ? '<span class="day-done" aria-hidden="true">✓</span>' : ''}</button>`;
   }).join("");
 }
 
@@ -203,9 +204,9 @@ function ensureTask(id){
   if(!state.tasks[id]) state.tasks[id] = { claimedBy:null, done:false };
   const t = state.tasks[id];
   const meta = taskMeta(id);
-  if (meta && meta.freq === "daily" && !t.schedule){
-    t.schedule = {};
-    DAYS.forEach(d => { t.schedule[d] = null; });
+  if (meta && meta.freq === "daily"){
+    if (!t.schedule){ t.schedule = {}; DAYS.forEach(d => { t.schedule[d] = null; }); }
+    if (!t.doneDays){ t.doneDays = {}; DAYS.forEach(d => { t.doneDays[d] = false; }); }
   }
   return t;
 }
@@ -300,7 +301,13 @@ function renderFilters(){
 function zoneVisibleTasks(zone){ return zone.tasks.filter(t => activeFilter==="all" || t[3]===activeFilter); }
 function zoneProgress(zone, visibleTasks){
   const total = visibleTasks.length;
-  const done = visibleTasks.filter(t => state.tasks[t[0]] && state.tasks[t[0]].done).length;
+  const today = todayName();
+  const done = visibleTasks.filter(t => {
+    const st = state.tasks[t[0]];
+    if (!st) return false;
+    if (t[3] === "daily") return !!(st.doneDays && st.doneDays[today]);
+    return !!st.done;
+  }).length;
   return `${done}/${total}`;
 }
 
@@ -324,11 +331,10 @@ function renderZones(){
     visible.forEach(([id, label, tier, freq]) => {
       const t = ensureTask(id);
       const row = document.createElement("div");
-      row.className = "task-row" + (t.done ? " done" : "");
       if (freq === "daily"){
+        row.className = "task-row";
         const todayAssignee = t.schedule ? t.schedule[todayName()] : null;
         row.innerHTML = `
-          <input type="checkbox" class="task-check" ${t.done?"checked":""} aria-label="Mark '${escapeHtml(label)}' done today" data-task="${id}">
           <span class="tier-tag ${tier}">${TIER[tier].label}</span>
           <span class="freq-tag">${FREQ[freq]}</span>
           <span class="task-main">
@@ -340,6 +346,7 @@ function renderZones(){
           </div>
         `;
       } else {
+        row.className = "task-row" + (t.done ? " done" : "");
         const rosterOptions = ["", ...state.roster].map(n =>
           `<option value="${escapeHtml(n)}" ${t.claimedBy===n?"selected":""}>${n===""?"Unclaimed":escapeHtml(n)}</option>`
         ).join("");
@@ -483,21 +490,27 @@ document.getElementById("new-name").addEventListener("keydown", (e) => {
 });
 
 document.getElementById("reset-daily-btn").addEventListener("click", async () => {
-  if (!confirm("Clear today's checkmarks for daily tasks? (Day-of-week assignments stay as-is.)")) return;
+  if (!confirm("Clear this week's daily check-offs? (Day-of-week assignments stay as-is.)")) return;
   allTaskIds().forEach(id => {
     const meta = taskMeta(id);
-    if (meta && meta.freq === "daily") ensureTask(id).done = false;
+    if (meta && meta.freq === "daily"){
+      const t = ensureTask(id);
+      t.done = false;
+      DAYS.forEach(d => { t.doneDays[d] = false; });
+    }
   });
   await saveState();
   renderAll();
 });
 document.getElementById("reset-all-btn").addEventListener("click", async () => {
-  if (!confirm("Clear today's daily checkmarks and reset every every-other-day, weekly, and monthly claim? Daily day-of-week assignments, one-time/pending items, and as-needed items are left as-is.")) return;
+  if (!confirm("Clear this week's daily check-offs and reset every every-other-day, weekly, and monthly claim? Daily day-of-week assignments, one-time/pending items, and as-needed items are left as-is.")) return;
   allTaskIds().forEach(id => {
     const meta = taskMeta(id);
     if (!meta || meta.freq === "onetime" || meta.freq === "as_needed") return;
     if (meta.freq === "daily"){
-      ensureTask(id).done = false;
+      const t = ensureTask(id);
+      t.done = false;
+      DAYS.forEach(d => { t.doneDays[d] = false; });
     } else {
       state.tasks[id] = { claimedBy: null, done: false };
     }
@@ -607,9 +620,9 @@ function ensureBedTask(roomId, freq, id){
     t = { done: !!t };
     bedState[roomId][freq][id] = t;
   }
-  if (BED_ASSIGNABLE_ROOMS.includes(roomId) && freq === "daily" && !t.schedule){
-    t.schedule = {};
-    DAYS.forEach(d => { t.schedule[d] = null; });
+  if (BED_ASSIGNABLE_ROOMS.includes(roomId) && freq === "daily"){
+    if (!t.schedule){ t.schedule = {}; DAYS.forEach(d => { t.schedule[d] = null; }); }
+    if (!t.doneDays){ t.doneDays = {}; DAYS.forEach(d => { t.doneDays[d] = false; }); }
   }
   return t;
 }
@@ -627,7 +640,8 @@ function bedDayCellsHtml(roomId, freq, id, label, t){
     else if (name) title = `${d}: ${name} — click to take this day for ${myName}`;
     else title = `${d}: unassigned — click to take this day for ${myName}`;
     const display = name ? initialsOf(name) : d[0];
-    return `<button type="button" class="day-bubble${isToday?' today':''}${name?' assigned':''}${isMine?' mine':''}"${disabledAttr} data-bedroom="${roomId}" data-bedfreq="${freq}" data-bedtaskid="${id}" data-day="${d}"${style} title="${escapeHtml(title)}" aria-label="${escapeHtml(title)}">${escapeHtml(display)}</button>`;
+    const isDone = t.doneDays && t.doneDays[d];
+    return `<button type="button" class="day-bubble${isToday?' today':''}${name?' assigned':''}${isMine?' mine':''}${isDone?' day-complete':''}"${disabledAttr} data-bedroom="${roomId}" data-bedfreq="${freq}" data-bedtaskid="${id}" data-day="${d}"${style} title="${escapeHtml(title)}" aria-label="${escapeHtml(title)}">${escapeHtml(display)}${isDone ? '<span class="day-done" aria-hidden="true">✓</span>' : ''}</button>`;
   }).join("");
 }
 function bedClaimHtml(roomId, freq, id, label, t){
@@ -654,11 +668,10 @@ function bedRenderSection(roomId, freq){
   tasks[freq].forEach(([id, label, tier]) => {
     const t = ensureBedTask(roomId, freq, id);
     const row = document.createElement("div");
-    row.className = "task-row" + (t.done ? " done" : "");
     if (assignable && freq === "daily"){
+      row.className = "task-row";
       const todayAssignee = t.schedule ? t.schedule[todayName()] : null;
       row.innerHTML = `
-        <input type="checkbox" class="task-check" ${t.done?"checked":""} aria-label="Mark '${escapeHtml(label)}' done today" data-bedperson="${roomId}" data-bedsection="${freq}" data-bedid="${id}">
         <span class="tier-tag ${tier}">${TIER[tier].label}</span>
         <span class="task-main">
           <span class="task-label">${escapeHtml(label)}</span>
@@ -669,6 +682,7 @@ function bedRenderSection(roomId, freq){
         </div>
       `;
     } else if (assignable){
+      row.className = "task-row" + (t.done ? " done" : "");
       row.innerHTML = `
         <input type="checkbox" class="task-check" ${t.done?"checked":""} aria-label="Mark '${escapeHtml(label)}' done" data-bedperson="${roomId}" data-bedsection="${freq}" data-bedid="${id}">
         <span class="tier-tag ${tier}">${TIER[tier].label}</span>
@@ -676,6 +690,7 @@ function bedRenderSection(roomId, freq){
         ${bedClaimHtml(roomId, freq, id, label, t)}
       `;
     } else {
+      row.className = "task-row" + (t.done ? " done" : "");
       row.innerHTML = `
         <input type="checkbox" class="task-check" ${t.done?"checked":""} aria-label="Mark '${escapeHtml(label)}' done" data-bedperson="${roomId}" data-bedsection="${freq}" data-bedid="${id}">
         <span class="tier-tag ${tier}">${TIER[tier].label}</span>
@@ -689,8 +704,15 @@ function bedRenderProgress(roomId){
   const tasks = ROOM_TASKS[roomId];
   if (!tasks) return;
   let doneCount = 0, total = 0;
+  const today = todayName();
+  const assignable = BED_ASSIGNABLE_ROOMS.includes(roomId);
   Object.entries(tasks).forEach(([freq, items]) => {
-    items.forEach(([id]) => { total++; if (ensureBedTask(roomId, freq, id).done) doneCount++; });
+    items.forEach(([id]) => {
+      total++;
+      const t = ensureBedTask(roomId, freq, id);
+      const isDone = (assignable && freq === "daily") ? (t.doneDays && t.doneDays[today]) : t.done;
+      if (isDone) doneCount++;
+    });
   });
   const el = document.getElementById(`bed-progress-${roomId}`);
   if (el) el.textContent = `${doneCount} of ${total} checked across all sections`;
@@ -730,7 +752,11 @@ document.addEventListener("click", async (e) => {
     const roomId = resetBtn.getAttribute("data-bedperson");
     const freq = resetBtn.getAttribute("data-bedreset");
     if (!confirm(`Clear ${freq} checkmarks for this space? (Who/day assignments stay as-is.)`)) return;
-    ROOM_TASKS[roomId][freq].forEach(([id]) => { ensureBedTask(roomId, freq, id).done = false; });
+    ROOM_TASKS[roomId][freq].forEach(([id]) => {
+      const t = ensureBedTask(roomId, freq, id);
+      t.done = false;
+      if (t.doneDays) DAYS.forEach(d => { t.doneDays[d] = false; });
+    });
     await bedSaveState(roomId);
     bedRenderAll();
     return;
@@ -773,7 +799,8 @@ function computeMyChores(){
     if (!t) return;
     const ref = { kind: "board", id };
     if (meta.freq === "daily"){
-      if (t.schedule && t.schedule[todayName()] === myName) today.push({ label: meta.label, source: meta.zone.name, ref, done: !!t.done });
+      const td = todayName();
+      if (t.schedule && t.schedule[td] === myName) today.push({ label: meta.label, source: meta.zone.name, ref: { kind: "board", id, day: td }, done: !!(t.doneDays && t.doneDays[td]) });
       const myDays = t.schedule ? DAYS.filter(d => t.schedule[d] === myName) : [];
       if (myDays.length) week.push({ label: meta.label, source: meta.zone.name, days: myDays });
     } else if (meta.freq === "eod"){
@@ -791,7 +818,8 @@ function computeMyChores(){
       const t = ensureBedTask("andry_moxxie", freq, id);
       const ref = { kind: "bed", roomId: "andry_moxxie", freq, id };
       if (freq === "daily"){
-        if (t.schedule && t.schedule[todayName()] === myName) today.push({ label, source: amLabel, ref, done: !!t.done });
+        const td = todayName();
+        if (t.schedule && t.schedule[td] === myName) today.push({ label, source: amLabel, ref: { kind: "bed", roomId: "andry_moxxie", freq: "daily", id, day: td }, done: !!(t.doneDays && t.doneDays[td]) });
         const myDays = t.schedule ? DAYS.filter(d => t.schedule[d] === myName) : [];
         if (myDays.length) week.push({ label, source: amLabel, days: myDays });
       } else if (freq === "weekly"){
@@ -814,7 +842,7 @@ function mychoresListHtml(items, emptyText){
     const note = it.days ? ` <span class="mychores-days">(${escapeHtml(it.days.join(", "))})</span>`
       : (it.note ? ` <span class="mychores-days">(${escapeHtml(it.note)})</span>` : "");
     const check = it.ref
-      ? `<input type="checkbox" class="mychores-check" ${it.done ? "checked" : ""} data-refkind="${it.ref.kind}" data-id="${escapeHtml(it.ref.id)}"${it.ref.roomId ? ` data-room="${escapeHtml(it.ref.roomId)}" data-freq="${escapeHtml(it.ref.freq)}"` : ""} aria-label="Mark done">`
+      ? `<input type="checkbox" class="mychores-check" ${it.done ? "checked" : ""} data-refkind="${it.ref.kind}" data-id="${escapeHtml(it.ref.id)}"${it.ref.roomId ? ` data-room="${escapeHtml(it.ref.roomId)}" data-freq="${escapeHtml(it.ref.freq)}"` : ""}${it.ref.day ? ` data-day="${escapeHtml(it.ref.day)}"` : ""} aria-label="Mark done">`
       : `<span class="mychores-nocheck"></span>`;
     return `<li class="mychores-item${it.done ? " done" : ""}">${check}<span class="mychores-label">${escapeHtml(it.label)}</span><span class="mychores-source">${escapeHtml(it.source)}</span>${note}</li>`;
   }).join("") + `</ul>`;
@@ -824,12 +852,15 @@ document.addEventListener("change", (e) => {
   const cb = e.target.closest(".mychores-check");
   if (!cb) return;
   const kind = cb.getAttribute("data-refkind");
+  const day = cb.getAttribute("data-day");
   if (kind === "board"){
-    ensureTask(cb.getAttribute("data-id")).done = cb.checked;
+    const t = ensureTask(cb.getAttribute("data-id"));
+    if (day) t.doneDays[day] = cb.checked; else t.done = cb.checked;
     saveState();
   } else if (kind === "bed"){
     const room = cb.getAttribute("data-room"), freq = cb.getAttribute("data-freq"), id = cb.getAttribute("data-id");
-    ensureBedTask(room, freq, id).done = cb.checked;
+    const t = ensureBedTask(room, freq, id);
+    if (day) t.doneDays[day] = cb.checked; else t.done = cb.checked;
     bedSaveState(room);
   }
   renderAll(); bedRenderAll();
