@@ -142,15 +142,21 @@ let activeFilter = "all";
 
 function allTaskIds(){ const ids=[]; ZONES.forEach(z=>z.tasks.forEach(t=>ids.push(t[0]))); return ids; }
 function taskMeta(id){ for(const z of ZONES) for(const t of z.tasks) if(t[0]===id) return {zone:z,id:t[0],label:t[1],tier:t[2],freq:t[3]}; return null; }
-function todayName(){ return DAYS[new Date().getDay()]; }
+// The board's day runs 5am to 5am, not midnight to midnight — a chore ticked off
+// at 1am still counts toward the day that just ended, and nothing rolls over on
+// someone who's up late. Everything that asks "what day is it" goes through
+// choreNow(), so this one number moves the whole boundary.
+const DAY_ROLLOVER_HOUR = 5;
+function choreNow(){ const d = new Date(); d.setHours(d.getHours() - DAY_ROLLOVER_HOUR); return d; }
+function todayName(){ return DAYS[choreNow().getDay()]; }
 function isoDate(d){ return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; }
-function todayISO(){ return isoDate(new Date()); }
+function todayISO(){ return isoDate(choreNow()); }
 // The calendar date a given day-of-week falls on in the current Sun–Sat week.
 function isoForDay(dayName){
-  const now = new Date();
+  const now = choreNow();
   return isoDate(new Date(now.getFullYear(), now.getMonth(), now.getDate() - now.getDay() + DAYS.indexOf(dayName)));
 }
-function monthKey(){ const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`; }
+function monthKey(){ return todayISO().slice(0,7); }
 // Check-offs are stamped with the date they were made, so they expire on their
 // own instead of carrying into the next day already crossed off. How long a ✓
 // stays good depends on the frequency: a daily or weekly ✓ belongs to the week
@@ -1009,8 +1015,8 @@ async function init(){
   watchDayRollover();
 }
 // Phones and tablets tend to leave this tab open for days. Without this, a device
-// that was already open at midnight keeps showing yesterday's check-offs until
-// someone reloads it.
+// that was already open when the day turned over at 5am keeps showing yesterday's
+// check-offs until someone reloads it.
 function watchDayRollover(){
   let lastSeen = todayISO();
   setInterval(() => {
