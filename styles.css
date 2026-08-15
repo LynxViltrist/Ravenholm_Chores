@@ -455,7 +455,23 @@ html{ background:#0c0a1c; }
 
 /* Per-day completion badge on the rotation bubbles (green ✓ on the corner) */
 .day-bubble{ position:relative; overflow:visible; }
+/* The corner ✓. On the household board it's a plain badge; in the rotating rooms
+   it sits in a .day-cell next to the bubble and is a button you can tap. */
+.day-cell{ position:relative; display:inline-flex; flex:none; }
 .day-done{ position:absolute; top:-6px; right:-6px; width:16px; height:16px; border-radius:50%;
   background:#2e7d32; color:#fff; font-size:11px; font-weight:700; line-height:16px; text-align:center;
   border:1.5px solid var(--parchment-1); box-shadow:0 1px 2px rgba(0,0,0,.45); pointer-events:none; }
 .day-bubble.day-complete{ border-color:#2e7d32; }
+
+button.day-done{ pointer-events:auto; cursor:pointer; padding:0; min-height:unset; z-index:1;
+  font-family:'EB Garamond', serif; }
+button.day-done.pending{ background:var(--parchment-1); color:var(--ink-muted);
+  border:1.5px dashed var(--parchment-border); box-shadow:none; opacity:.55; }
+button.day-done.pending:hover, button.day-done.pending:focus-visible{
+  opacity:1; color:#2e7d32; border-color:#2e7d32; border-style:solid; }
+button.day-done:focus-visible{ outline:2px solid var(--focus); outline-offset:2px; }
+/* Tap targets on phones: the bubbles get a little more room so the ✓ isn't fiddly. */
+@media (max-width: 520px){
+  .day-row{ gap:10px; }
+  button.day-done{ width:18px; height:18px; line-height:18px; top:-7px; right:-7px; }
+}

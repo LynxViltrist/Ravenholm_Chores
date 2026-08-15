@@ -143,6 +143,39 @@ let activeFilter = "all";
 function allTaskIds(){ const ids=[]; ZONES.forEach(z=>z.tasks.forEach(t=>ids.push(t[0]))); return ids; }
 function taskMeta(id){ for(const z of ZONES) for(const t of z.tasks) if(t[0]===id) return {zone:z,id:t[0],label:t[1],tier:t[2],freq:t[3]}; return null; }
 function todayName(){ return DAYS[new Date().getDay()]; }
+function isoDate(d){ return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; }
+function todayISO(){ return isoDate(new Date()); }
+// The calendar date a given day-of-week falls on in the current Sun–Sat week.
+function isoForDay(dayName){
+  const now = new Date();
+  return isoDate(new Date(now.getFullYear(), now.getMonth(), now.getDate() - now.getDay() + DAYS.indexOf(dayName)));
+}
+function monthKey(){ const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`; }
+// Check-offs are stamped with the date they were made, so they expire on their
+// own instead of carrying into the next day already crossed off. How long a ✓
+// stays good depends on the frequency: a daily or weekly ✓ belongs to the week
+// it was made in, a monthly ✓ to the calendar month.
+function dayDone(t, d, freq){
+  if (!(t.doneDays && t.doneDays[d])) return false;
+  const stamp = t.doneDates && t.doneDates[d];
+  if (!stamp) return false;
+  return freq === "monthly" ? stamp.slice(0,7) === monthKey() : stamp === isoForDay(d);
+}
+function setDayDone(t, d, checked, freq){
+  if (!t.doneDays) t.doneDays = {};
+  if (!t.doneDates) t.doneDates = {};
+  t.doneDays[d] = checked;
+  // Monthly ✓s are stamped with the day it was actually ticked, so one made late
+  // in the month doesn't get backdated into the previous one.
+  t.doneDates[d] = checked ? (freq === "monthly" ? todayISO() : isoForDay(d)) : null;
+}
+function dailyDone(t){ return !!t.done && t.doneDate === todayISO(); }
+function setDailyDone(t, checked){ t.done = checked; t.doneDate = checked ? todayISO() : null; }
+function clearMarks(t){
+  t.done = false; t.doneDate = null;
+  if (t.doneDays) DAYS.forEach(d => { t.doneDays[d] = false; });
+  if (t.doneDates) DAYS.forEach(d => { t.doneDates[d] = null; });
+}
 function colorFor(name){
   const idx = state.roster.indexOf(name);
   if (idx < 0) return null;
@@ -167,7 +200,7 @@ function dayCellsHtml(id, label, t){
     else if (name) title = `${d}: ${name} — click to take this day for ${myName}`;
     else title = `${d}: unassigned — click to take this day for ${myName}`;
     const display = name ? initialsOf(name) : d[0];
-    const isDone = t.doneDays && t.doneDays[d];
+    const isDone = dayDone(t, d, "daily");
     return `<button type="button" class="day-bubble${isToday?' today':''}${name?' assigned':''}${isMine?' mine':''}${isDone?' day-complete':''}"${disabledAttr} data-task="${id}" data-day="${d}"${style} title="${escapeHtml(title)}" aria-label="${escapeHtml(title)}">${escapeHtml(display)}${isDone ? '<span class="day-done" aria-hidden="true">✓</span>' : ''}</button>`;
   }).join("");
 }
@@ -207,6 +240,7 @@ function ensureTask(id){
   if (meta && meta.freq === "daily"){
     if (!t.schedule){ t.schedule = {}; DAYS.forEach(d => { t.schedule[d] = null; }); }
     if (!t.doneDays){ t.doneDays = {}; DAYS.forEach(d => { t.doneDays[d] = false; }); }
+    if (!t.doneDates){ t.doneDates = {}; DAYS.forEach(d => { t.doneDates[d] = null; }); }
   }
   return t;
 }
@@ -305,7 +339,7 @@ function zoneProgress(zone, visibleTasks){
   const done = visibleTasks.filter(t => {
     const st = state.tasks[t[0]];
     if (!st) return false;
-    if (t[3] === "daily") return !!(st.doneDays && st.doneDays[today]);
+    if (t[3] === "daily") return dayDone(st, today, "daily");
     return !!st.done;
   }).length;
   return `${done}/${total}`;
@@ -493,11 +527,7 @@ document.getElementById("reset-daily-btn").addEventListener("click", async () =>
   if (!confirm("Clear this week's daily check-offs? (Day-of-week assignments stay as-is.)")) return;
   allTaskIds().forEach(id => {
     const meta = taskMeta(id);
-    if (meta && meta.freq === "daily"){
-      const t = ensureTask(id);
-      t.done = false;
-      DAYS.forEach(d => { t.doneDays[d] = false; });
-    }
+    if (meta && meta.freq === "daily") clearMarks(ensureTask(id));
   });
   await saveState();
   renderAll();
@@ -508,9 +538,7 @@ document.getElementById("reset-all-btn").addEventListener("click", async () => {
     const meta = taskMeta(id);
     if (!meta || meta.freq === "onetime" || meta.freq === "as_needed") return;
     if (meta.freq === "daily"){
-      const t = ensureTask(id);
-      t.done = false;
-      DAYS.forEach(d => { t.doneDays[d] = false; });
+      clearMarks(ensureTask(id));
     } else {
       state.tasks[id] = { claimedBy: null, done: false };
     }
@@ -613,19 +641,39 @@ async function bedLoadState(){
 async function bedSaveState(roomId){
   try{ await window.storage.set(bedKey(roomId), JSON.stringify(bedState[roomId]), true); } catch(e){ console.error("Save failed", e); }
 }
-const BED_ASSIGNABLE_ROOMS = ["andry_moxxie"];
+// Shared spaces run on a day-of-week rotation across every section, so you can see
+// who took which day and tick it off. Lynx's room is one person's, so it stays on
+// plain checkboxes.
+const BED_ASSIGNABLE_ROOMS = ["andry_moxxie", "closet_moxxie"];
+const BED_ROOM_LABELS = {
+  lynx: "Lynx Bedroom",
+  andry_moxxie: "Andry & Moxxie Bedroom",
+  closet_moxxie: "Moxxie Closet",
+};
+function bedRotates(roomId){ return BED_ASSIGNABLE_ROOMS.includes(roomId); }
 function ensureBedTask(roomId, freq, id){
   let t = bedState[roomId][freq][id];
   if (!t || typeof t !== "object"){
     t = { done: !!t };
     bedState[roomId][freq][id] = t;
   }
-  if (BED_ASSIGNABLE_ROOMS.includes(roomId) && freq === "daily"){
+  if (bedRotates(roomId)){
     if (!t.schedule){ t.schedule = {}; DAYS.forEach(d => { t.schedule[d] = null; }); }
     if (!t.doneDays){ t.doneDays = {}; DAYS.forEach(d => { t.doneDays[d] = false; }); }
+    if (!t.doneDates){ t.doneDates = {}; DAYS.forEach(d => { t.doneDates[d] = null; }); }
   }
   return t;
 }
+// Whether the task reads as done right now. On a rotating room a daily task is
+// judged by today's bubble, while weekly/monthly count as done once any day has
+// been ticked inside the current week or month.
+function bedTaskDone(roomId, freq, t){
+  if (!bedRotates(roomId)) return freq === "daily" ? dailyDone(t) : !!t.done;
+  if (freq === "daily") return dayDone(t, todayName(), freq);
+  return DAYS.some(d => dayDone(t, d, freq));
+}
+// The day whose ✓ is currently standing, for the "done Wed by Moxxie" badge.
+function bedDoneDay(t, freq){ return DAYS.find(d => dayDone(t, d, freq)) || null; }
 function bedDayCellsHtml(roomId, freq, id, label, t){
   return DAYS.map(d => {
     const name = t.schedule ? t.schedule[d] : null;
@@ -640,59 +688,60 @@ function bedDayCellsHtml(roomId, freq, id, label, t){
     else if (name) title = `${d}: ${name} — click to take this day for ${myName}`;
     else title = `${d}: unassigned — click to take this day for ${myName}`;
     const display = name ? initialsOf(name) : d[0];
-    const isDone = t.doneDays && t.doneDays[d];
-    return `<button type="button" class="day-bubble${isToday?' today':''}${name?' assigned':''}${isMine?' mine':''}${isDone?' day-complete':''}"${disabledAttr} data-bedroom="${roomId}" data-bedfreq="${freq}" data-bedtaskid="${id}" data-day="${d}"${style} title="${escapeHtml(title)}" aria-label="${escapeHtml(title)}">${escapeHtml(display)}${isDone ? '<span class="day-done" aria-hidden="true">✓</span>' : ''}</button>`;
+    const isDone = dayDone(t, d, freq);
+    const bubble = `<button type="button" class="day-bubble${isToday?' today':''}${name?' assigned':''}${isMine?' mine':''}${isDone?' day-complete':''}"${disabledAttr} data-bedroom="${roomId}" data-bedfreq="${freq}" data-bedtaskid="${id}" data-day="${d}"${style} title="${escapeHtml(title)}" aria-label="${escapeHtml(title)}">${escapeHtml(display)}</button>`;
+    // The ✓ only appears once someone has taken the day — that's what makes it a
+    // record of who did it rather than just that it happened.
+    if (!name) return `<span class="day-cell">${bubble}</span>`;
+    const tickTitle = isDone
+      ? `${d}: done by ${name} — click to un-check`
+      : `${d}: mark done for ${name}`;
+    const tick = `<button type="button" class="day-done${isDone?'':' pending'}" data-beddone="${roomId}" data-bedfreq="${freq}" data-bedtaskid="${id}" data-day="${d}" title="${escapeHtml(tickTitle)}" aria-label="${escapeHtml(tickTitle)}" aria-pressed="${isDone?'true':'false'}">✓</button>`;
+    return `<span class="day-cell">${bubble}${tick}</span>`;
   }).join("");
 }
-function bedClaimHtml(roomId, freq, id, label, t){
-  const rosterOptions = ["", ...state.roster].map(n =>
-    `<option value="${escapeHtml(n)}" ${t.claimedBy===n?"selected":""}>${n===""?"Unclaimed":escapeHtml(n)}</option>`
-  ).join("");
-  const isMineClaim = myName && t.claimedBy === myName;
-  const quickDisabled = myName ? "" : " disabled";
-  const quickTitle = myName ? `Quick-claim for ${myName}` : "Set who you are on the Household Board tab first";
-  return `
-    <select class="claim-select" aria-label="Who's doing '${escapeHtml(label)}'" data-bedroom="${roomId}" data-bedfreq="${freq}" data-bedtaskid="${id}">
-      ${rosterOptions}
-    </select>
-    <button type="button" class="ghost small claim-quick${isMineClaim?' active':''}"${quickDisabled} data-bedroom="${roomId}" data-bedfreq="${freq}" data-bedtaskid="${id}" title="${escapeHtml(quickTitle)}">${isMineClaim ? "✓ Mine" : "Mine"}</button>
-  `;
+// Sits under the task name: who's on today for dailies, and for weekly/monthly
+// whether it's been done yet in the current week or month.
+function bedBadgeHtml(freq, t){
+  if (freq === "daily"){
+    const who = t.schedule ? t.schedule[todayName()] : null;
+    return `<span class="today-badge${who?"":" unassigned"}">${who ? `Today: ${escapeHtml(who)}` : "Today: unassigned"}</span>`;
+  }
+  const doneDay = bedDoneDay(t, freq);
+  if (doneDay){
+    const who = t.schedule && t.schedule[doneDay];
+    return `<span class="today-badge">${who ? `Done ${doneDay} · ${escapeHtml(who)}` : `Done ${doneDay}`}</span>`;
+  }
+  const period = freq === "weekly" ? "week" : "month";
+  const taken = t.schedule ? DAYS.filter(d => t.schedule[d]) : [];
+  return `<span class="today-badge unassigned">${taken.length ? `Planned ${escapeHtml(taken.join(", "))} — not done this ${period}` : `Unassigned this ${period}`}</span>`;
 }
 function bedRenderSection(roomId, freq){
   const body = document.querySelector(`[data-bedbody="${roomId}-${freq}"]`);
   if (!body) return;
   const tasks = ROOM_TASKS[roomId];
   if (!tasks) return;
-  const assignable = BED_ASSIGNABLE_ROOMS.includes(roomId);
   body.innerHTML = "";
   tasks[freq].forEach(([id, label, tier]) => {
     const t = ensureBedTask(roomId, freq, id);
     const row = document.createElement("div");
-    if (assignable && freq === "daily"){
-      row.className = "task-row";
-      const todayAssignee = t.schedule ? t.schedule[todayName()] : null;
+    if (bedRotates(roomId)){
+      row.className = "task-row" + (bedTaskDone(roomId, freq, t) ? " done" : "");
       row.innerHTML = `
         <span class="tier-tag ${tier}">${TIER[tier].label}</span>
         <span class="task-main">
           <span class="task-label">${escapeHtml(label)}</span>
-          <span class="today-badge${todayAssignee?"":" unassigned"}">${todayAssignee ? `Today: ${escapeHtml(todayAssignee)}` : "Today: unassigned"}</span>
+          ${bedBadgeHtml(freq, t)}
         </span>
         <div class="day-row" role="group" aria-label="Assign days for '${escapeHtml(label)}'">
           ${bedDayCellsHtml(roomId, freq, id, label, t)}
         </div>
       `;
-    } else if (assignable){
-      row.className = "task-row" + (t.done ? " done" : "");
-      row.innerHTML = `
-        <input type="checkbox" class="task-check" ${t.done?"checked":""} aria-label="Mark '${escapeHtml(label)}' done" data-bedperson="${roomId}" data-bedsection="${freq}" data-bedid="${id}">
-        <span class="tier-tag ${tier}">${TIER[tier].label}</span>
-        <span class="task-main"><span class="task-label">${escapeHtml(label)}</span></span>
-        ${bedClaimHtml(roomId, freq, id, label, t)}
-      `;
     } else {
-      row.className = "task-row" + (t.done ? " done" : "");
+      const isDone = bedTaskDone(roomId, freq, t);
+      row.className = "task-row" + (isDone ? " done" : "");
       row.innerHTML = `
-        <input type="checkbox" class="task-check" ${t.done?"checked":""} aria-label="Mark '${escapeHtml(label)}' done" data-bedperson="${roomId}" data-bedsection="${freq}" data-bedid="${id}">
+        <input type="checkbox" class="task-check" ${isDone?"checked":""} aria-label="Mark '${escapeHtml(label)}' done" data-bedperson="${roomId}" data-bedsection="${freq}" data-bedid="${id}">
         <span class="tier-tag ${tier}">${TIER[tier].label}</span>
         <span class="task-label">${escapeHtml(label)}</span>
       `;
@@ -704,14 +753,10 @@ function bedRenderProgress(roomId){
   const tasks = ROOM_TASKS[roomId];
   if (!tasks) return;
   let doneCount = 0, total = 0;
-  const today = todayName();
-  const assignable = BED_ASSIGNABLE_ROOMS.includes(roomId);
   Object.entries(tasks).forEach(([freq, items]) => {
     items.forEach(([id]) => {
       total++;
-      const t = ensureBedTask(roomId, freq, id);
-      const isDone = (assignable && freq === "daily") ? (t.doneDays && t.doneDays[today]) : t.done;
-      if (isDone) doneCount++;
+      if (bedTaskDone(roomId, freq, ensureBedTask(roomId, freq, id))) doneCount++;
     });
   });
   const el = document.getElementById(`bed-progress-${roomId}`);
@@ -732,18 +777,11 @@ document.addEventListener("change", async (e) => {
     const roomId = el.getAttribute("data-bedperson");
     const freq = el.getAttribute("data-bedsection");
     const id = el.getAttribute("data-bedid");
-    ensureBedTask(roomId, freq, id).done = el.checked;
+    const t = ensureBedTask(roomId, freq, id);
+    if (freq === "daily") setDailyDone(t, el.checked); else t.done = el.checked;
     await bedSaveState(roomId);
     bedRenderAll();
     return;
-  }
-  if (el.matches(".claim-select[data-bedroom]")){
-    const roomId = el.getAttribute("data-bedroom");
-    const freq = el.getAttribute("data-bedfreq");
-    const id = el.getAttribute("data-bedtaskid");
-    ensureBedTask(roomId, freq, id).claimedBy = el.value || null;
-    await bedSaveState(roomId);
-    bedRenderAll();
   }
 });
 document.addEventListener("click", async (e) => {
@@ -753,10 +791,20 @@ document.addEventListener("click", async (e) => {
     const freq = resetBtn.getAttribute("data-bedreset");
     if (!confirm(`Clear ${freq} checkmarks for this space? (Who/day assignments stay as-is.)`)) return;
     ROOM_TASKS[roomId][freq].forEach(([id]) => {
-      const t = ensureBedTask(roomId, freq, id);
-      t.done = false;
-      if (t.doneDays) DAYS.forEach(d => { t.doneDays[d] = false; });
+      clearMarks(ensureBedTask(roomId, freq, id));
     });
+    await bedSaveState(roomId);
+    bedRenderAll();
+    return;
+  }
+  const doneTick = e.target.closest(".day-done[data-beddone]");
+  if (doneTick){
+    const roomId = doneTick.getAttribute("data-beddone");
+    const freq = doneTick.getAttribute("data-bedfreq");
+    const id = doneTick.getAttribute("data-bedtaskid");
+    const day = doneTick.getAttribute("data-day");
+    const t = ensureBedTask(roomId, freq, id);
+    setDayDone(t, day, !dayDone(t, day, freq), freq);
     await bedSaveState(roomId);
     bedRenderAll();
     return;
@@ -769,21 +817,13 @@ document.addEventListener("click", async (e) => {
     const id = dayBubble.getAttribute("data-bedtaskid");
     const day = dayBubble.getAttribute("data-day");
     const t = ensureBedTask(roomId, freq, id);
-    t.schedule[day] = (t.schedule[day] === myName) ? null : myName;
+    // Releasing a day drops its ✓ too — an unassigned day has nobody to credit.
+    const taking = t.schedule[day] !== myName;
+    t.schedule[day] = taking ? myName : null;
+    if (!taking) setDayDone(t, day, false, freq);
     await bedSaveState(roomId);
     bedRenderAll();
     return;
-  }
-  const quickBtn = e.target.closest(".claim-quick[data-bedroom]");
-  if (quickBtn){
-    if (!myName) return;
-    const roomId = quickBtn.getAttribute("data-bedroom");
-    const freq = quickBtn.getAttribute("data-bedfreq");
-    const id = quickBtn.getAttribute("data-bedtaskid");
-    const t = ensureBedTask(roomId, freq, id);
-    t.claimedBy = (t.claimedBy === myName) ? null : myName;
-    await bedSaveState(roomId);
-    bedRenderAll();
   }
 });
 
@@ -800,7 +840,7 @@ function computeMyChores(){
     const ref = { kind: "board", id };
     if (meta.freq === "daily"){
       const td = todayName();
-      if (t.schedule && t.schedule[td] === myName) today.push({ label: meta.label, source: meta.zone.name, ref: { kind: "board", id, day: td }, done: !!(t.doneDays && t.doneDays[td]) });
+      if (t.schedule && t.schedule[td] === myName) today.push({ label: meta.label, source: meta.zone.name, ref: { kind: "board", id, day: td }, done: dayDone(t, td, "daily") });
       const myDays = t.schedule ? DAYS.filter(d => t.schedule[d] === myName) : [];
       if (myDays.length) week.push({ label: meta.label, source: meta.zone.name, days: myDays });
     } else if (meta.freq === "eod"){
@@ -812,21 +852,26 @@ function computeMyChores(){
     }
   });
 
-  const amLabel = "Andry & Moxxie Bedroom";
-  ["daily","weekly","monthly"].forEach(freq => {
-    ROOM_TASKS.andry_moxxie[freq].forEach(([id, label]) => {
-      const t = ensureBedTask("andry_moxxie", freq, id);
-      const ref = { kind: "bed", roomId: "andry_moxxie", freq, id };
-      if (freq === "daily"){
-        const td = todayName();
-        if (t.schedule && t.schedule[td] === myName) today.push({ label, source: amLabel, ref: { kind: "bed", roomId: "andry_moxxie", freq: "daily", id, day: td }, done: !!(t.doneDays && t.doneDays[td]) });
+  // Rotating rooms: every section is day-assigned, so pull in whichever days are mine.
+  BED_ASSIGNABLE_ROOMS.forEach(roomId => {
+    const source = BED_ROOM_LABELS[roomId] || roomId;
+    ["daily","weekly","monthly"].forEach(freq => {
+      ROOM_TASKS[roomId][freq].forEach(([id, label]) => {
+        const t = ensureBedTask(roomId, freq, id);
         const myDays = t.schedule ? DAYS.filter(d => t.schedule[d] === myName) : [];
-        if (myDays.length) week.push({ label, source: amLabel, days: myDays });
-      } else if (freq === "weekly"){
-        if (t.claimedBy === myName) week.push({ label, source: amLabel, ref, done: !!t.done });
-      } else if (freq === "monthly"){
-        if (t.claimedBy === myName) month.push({ label, source: amLabel, ref, done: !!t.done });
-      }
+        if (!myDays.length) return;
+        if (freq === "daily"){
+          const td = todayName();
+          if (t.schedule[td] === myName){
+            today.push({ label, source, ref: { kind: "bed", roomId, freq, id, day: td }, done: dayDone(t, td, freq) });
+          }
+          week.push({ label, source, days: myDays });
+        } else {
+          // Ticking here marks the first day I took; the room tab can credit a specific day.
+          const bucket = freq === "weekly" ? week : month;
+          bucket.push({ label, source, days: myDays, ref: { kind: "bed", roomId, freq, id, day: myDays[0] }, done: bedTaskDone(roomId, freq, t) });
+        }
+      });
     });
   });
 
@@ -855,12 +900,14 @@ document.addEventListener("change", (e) => {
   const day = cb.getAttribute("data-day");
   if (kind === "board"){
     const t = ensureTask(cb.getAttribute("data-id"));
-    if (day) t.doneDays[day] = cb.checked; else t.done = cb.checked;
+    if (day) setDayDone(t, day, cb.checked, "daily"); else t.done = cb.checked;
     saveState();
   } else if (kind === "bed"){
     const room = cb.getAttribute("data-room"), freq = cb.getAttribute("data-freq"), id = cb.getAttribute("data-id");
     const t = ensureBedTask(room, freq, id);
-    if (day) t.doneDays[day] = cb.checked; else t.done = cb.checked;
+    if (day) setDayDone(t, day, cb.checked, freq);
+    else if (freq === "daily") setDailyDone(t, cb.checked);
+    else t.done = cb.checked;
     bedSaveState(room);
   }
   renderAll(); bedRenderAll();
@@ -959,5 +1006,18 @@ async function init(){
   bedRenderAll();
   await laundryLoadState();
   laundryRenderAll();
+  watchDayRollover();
+}
+// Phones and tablets tend to leave this tab open for days. Without this, a device
+// that was already open at midnight keeps showing yesterday's check-offs until
+// someone reloads it.
+function watchDayRollover(){
+  let lastSeen = todayISO();
+  setInterval(() => {
+    const now = todayISO();
+    if (now === lastSeen) return;
+    lastSeen = now;
+    renderAll(); bedRenderAll(); laundryRenderAll();
+  }, 60 * 1000);
 }
 window.init = init;
